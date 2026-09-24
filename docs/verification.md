@@ -2,6 +2,13 @@
 
 September 24, 2026. These are observed checks, not claims of exhaustive device coverage.
 
+## GTA update checks (September 24, 16:00–16:30 UTC)
+
+- `npm test`: 15 passing tests, adding wanted trigger at the north pier, respray star math (min one star, full clear empties cops), busted after stalling with a cop behind, respray booth entry that re-arms after a cancel, and cop pursuit poses.
+- Chrome 1440 × 860 (headless, dev build with dev-only teleport hooks that are stripped from production): WANTED at the pier with CCTV still, three cruisers flanking along the driven line, BUSTED meter, Spray & Pray opening native Unlayer in dark theme, Technicolor preset saved → measured 76% new → all stars cleared → MISSION PASSED → Bay 9 News with before/after and 76% stamp.
+- Chrome 390 × 844: same route; Invert preset measured 100% new; HUD, respray meter, result and news layouts checked and a radar/banner overlap fixed.
+- Production build passes; `__sd` dev hooks absent from `dist`. A Codex review of the diff found one flow bug (cancelled respray disabled the booth), fixed and covered by a test.
+
 ## Local release checks
 
 - `npm test`: 10 passing tests covering the four-checkpoint route, timeout, drift, collision cooldown, repeated steering, completed-route scoring, unchanged editor Save, dirty-flag reset, and export fallback.

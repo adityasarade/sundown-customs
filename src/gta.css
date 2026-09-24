@@ -830,3 +830,10 @@ button.station:hover { color: #fff; }
   color: #fff;
 }
 @media (max-width: 700px) { .station-pop { top: 190px; } }
+
+.home h1 em,
+.garage-title h1 em,
+.brief-card h2 em {
+  text-shadow: none;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
+}

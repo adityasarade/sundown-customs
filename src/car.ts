@@ -272,22 +272,22 @@ export function makeCar(
   box(group, [1.28, 0.1, 0.055], [0, 0.74, -2.786], dark);
 
   if (variant === "hero") {
-    const beamMaterial = new THREE.MeshBasicMaterial({
-      color: "#ffe4a8",
+    // Headlight spill on the road: reads as light at dusk without blocking the
+    // chase camera the way volumetric cones do.
+    const poolMaterial = new THREE.MeshBasicMaterial({
+      color: "#ffe2a0",
       transparent: true,
-      opacity: 0.075,
+      opacity: 0.22,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      side: THREE.DoubleSide,
+      fog: false,
     });
-    const beamGeometry = new THREE.ConeGeometry(0.72, 3.5, 12, 1, true);
-    beamGeometry.rotateX(Math.PI / 2);
-    for (const x of [-0.86, 0.86]) {
-      const beam = new THREE.Mesh(beamGeometry, beamMaterial);
-      beam.position.set(x, 0.91, -3.91);
-      beam.renderOrder = 1;
-      group.add(beam);
-    }
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(1, 28), poolMaterial);
+    pool.rotation.x = -Math.PI / 2;
+    pool.scale.set(2.3, 3.6, 1);
+    pool.position.set(0, 0.06, -6.2);
+    pool.renderOrder = 1;
+    group.add(pool);
   }
 
   const tailMaterial = new THREE.MeshStandardMaterial({
