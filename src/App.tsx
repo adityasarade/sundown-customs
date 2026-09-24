@@ -49,6 +49,7 @@ import Guide from "./Guide";
 import BayFeed from "./BayFeed";
 import { composeLivery, type Slot } from "./decals";
 import { createEmblem } from "./emblem";
+import { wantedBillboard } from "./poster";
 
 type Tip = { id: string; title?: string; text: string };
 const LOADING_TIPS = [
@@ -218,6 +219,7 @@ function App() {
     [banner, setBanner] = useState<Banner | null>(null),
     [texts, setTexts] = useState<{ id: number; text: string }[]>([]),
     [wantedShot, setWantedShot] = useState(""),
+    [billboard, setBillboard] = useState(""),
     [respray, setRespray] = useState<Respray | null>(null),
     [shake, setShake] = useState(false),
     [glow, setGlow] = useState<string | null>(
@@ -244,6 +246,8 @@ function App() {
   const [intro, setIntro] = useState(true),
     [station, setStation] = useState(0),
     [stationPop, setStationPop] = useState(0);
+  const savedRef = useRef(""),
+    aliasRef = useRef("");
   const worldApi = useRef<WorldApi | null>(null),
     seq = useRef(0);
   const flash = useCallback(
@@ -266,6 +270,8 @@ function App() {
     captureRef = useRef<(() => string) | null>(null),
     radio = useRef<Radio | null>(null);
   const baseWrap = saved || templates[style];
+  savedRef.current = baseWrap;
+  aliasRef.current = alias;
   const hasDecals = Object.values(placed).some(Boolean);
   useEffect(() => {
     if (!hasDecals) {
@@ -341,7 +347,12 @@ function App() {
     (e: DriveEvent, shot?: string) => {
       if (e === "checkpoint") flash("CHECKPOINT", "+$450", "gold");
       if (e === "wanted") {
-        if (shot) setWantedShot(shot);
+        if (shot) {
+          setWantedShot(shot);
+          wantedBillboard(shot, savedRef.current, aliasRef.current || "GHOST")
+            .then(setBillboard)
+            .catch(() => {});
+        }
         setTimeout(() => flash("WANTED", "The pier cameras clocked your paint", "red"), 900);
         radio.current?.siren();
         text("Pier cameras just clocked your paint. Every cop in Solana Bay has a description of it.");
@@ -394,7 +405,7 @@ function App() {
     text(
       r.remaining
         ? `${Math.round(changed * 100)}% different? They still half-recognise it. Floor it.`
-        : "Look at that. Brand-new car, as far as Bay PD knows.",
+        : "Look at that. Every Bay PD billboard is hunting a car that doesn’t exist anymore.",
     );
   };
   useEffect(() => {
@@ -496,6 +507,7 @@ function App() {
     setPaused(false);
     setTelemetry(emptyTelemetry);
     setWantedShot("");
+    setBillboard("");
     setRespray(null);
     setBanner(null);
     setTexts([]);
@@ -586,6 +598,7 @@ function App() {
             onEvent={onEvent}
             underglow={glow}
             emblemUrl={emblemUrl}
+            billboardUrl={billboard}
             autoThrottle={autoThrottle}
             onTelemetry={setTelemetry}
             onFinish={finish}

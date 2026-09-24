@@ -70,6 +70,7 @@ export type WorldProps = {
   onEvent?: (e: DriveEvent, shot?: string) => void;
   underglow?: string | null;
   emblemUrl?: string;
+  billboardUrl?: string;
 };
 const PI = Math.PI;
 const materials = new Map<string, THREE.MeshStandardMaterial>();
@@ -605,6 +606,36 @@ export function World(all: WorldProps) {
     emblem.position.set(0, 1.835, 0.37);
     emblem.visible = false;
     car.group.add(emblem);
+    // Bay PD billboards along the route: they show the paint the cameras saw.
+    const boardMat = new THREE.MeshBasicMaterial({ color: "#ffffff" });
+    boardMat.color.setScalar(1.25);
+    const boards = [
+      { x: 108, z: -118, r: -1.3 },
+      { x: 158, z: 8, r: -2.75 },
+    ].map((b) => {
+      const g = new THREE.Group();
+      g.position.set(b.x, 0, b.z);
+      g.rotation.y = b.r;
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(18, 9), boardMat);
+      panel.position.y = 6.6;
+      g.add(panel);
+      const back = new THREE.Mesh(
+        new THREE.BoxGeometry(18.6, 9.6, 0.4),
+        material("#1a1422", 0.7),
+      );
+      back.position.set(0, 6.6, -0.25);
+      g.add(back);
+      for (const x of [-5, 5]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.4, 0.4), material("#2a2733"));
+        post.position.set(x, 1.2, -0.3);
+        g.add(post);
+      }
+      g.visible = false;
+      scene.add(g);
+      return g;
+    });
+    let lastBoard = "",
+      boardTex: THREE.Texture | null = null;
     let lastEmblem = "",
       emblemTex: THREE.Texture | null = null;
     scene.add(car.group);
@@ -672,11 +703,11 @@ export function World(all: WorldProps) {
     heli.visible = false;
     scene.add(heli);
     const searchlight = new THREE.Mesh(
-      new THREE.ConeGeometry(4.2, 24, 28, 1, true),
+      new THREE.ConeGeometry(3.4, 24, 28, 1, true),
       new THREE.MeshBasicMaterial({
         color: "#fff4d0",
         transparent: true,
-        opacity: 0.13,
+        opacity: 0.045,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
@@ -854,6 +885,20 @@ export function World(all: WorldProps) {
         raf = requestAnimationFrame(tick);
         return;
       }
+      if ((p.billboardUrl ?? "") !== lastBoard) {
+        lastBoard = p.billboardUrl ?? "";
+        if (lastBoard)
+          new THREE.TextureLoader().load(lastBoard, (tex) => {
+            if (dead) return tex.dispose();
+            tex.colorSpace = THREE.SRGBColorSpace;
+            boardTex?.dispose();
+            boardTex = tex;
+            boardMat.map = tex;
+            boardMat.needsUpdate = true;
+          });
+      }
+      for (const b of boards)
+        b.visible = p.mode === "drive" && !!lastBoard && !!boardMat.map;
       if ((p.emblemUrl ?? "") !== lastEmblem) {
         lastEmblem = p.emblemUrl ?? "";
         if (!lastEmblem) emblem.visible = false;
@@ -862,6 +907,7 @@ export function World(all: WorldProps) {
             if (dead) return tex.dispose();
             tex.colorSpace = THREE.SRGBColorSpace;
             emblemTex?.dispose();
+      boardTex?.dispose();
             emblemTex = tex;
             emblemMat.map = tex;
             emblemMat.needsUpdate = true;
