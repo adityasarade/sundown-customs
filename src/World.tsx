@@ -907,7 +907,6 @@ export function World(all: WorldProps) {
             if (dead) return tex.dispose();
             tex.colorSpace = THREE.SRGBColorSpace;
             emblemTex?.dispose();
-      boardTex?.dispose();
             emblemTex = tex;
             emblemMat.map = tex;
             emblemMat.needsUpdate = true;
@@ -1213,6 +1212,7 @@ export function World(all: WorldProps) {
       windowMats.length = 0;
       currentTexture?.dispose();
       emblemTex?.dispose();
+      boardTex?.dispose();
       composer.dispose();
       renderer.dispose();
       renderer.domElement.remove();

@@ -33,9 +33,9 @@ Finish (MISSION PASSED), get BUSTED, or run out of time, and Bay 9 News airs the
 
 ## Draft X post — not published
 
-Paint your getaway car AND your crew emblem in @unlayer's React Image Editor. Get five wanted stars. Repaint mid-chase to disappear — every 8% of paint you change drops a star. Bay 9 News airs your actual car after.
+Paint your getaway car and your crew emblem in @unlayer's React Image Editor. Get five wanted stars, then repaint mid-chase to disappear — every 8% of paint you change drops a star. Bay 9 News airs your actual car after.
 
-Built for #BuiltWithImageEditor.
+#BuiltWithImageEditor
 
 https://sundown-customs.vercel.app
 

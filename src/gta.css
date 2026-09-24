@@ -1018,3 +1018,4 @@ button.station:hover { color: #fff; }
   background: linear-gradient(95deg, #ff4fb0 5%, #ff8a5c 55%, #ffc15a 95%);
   -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
 }
+@media (max-width: 700px) { .result-ui { height: 1180px; min-height: 1180px; } }

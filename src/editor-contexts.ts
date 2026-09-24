@@ -132,3 +132,8 @@ export function editorOptions(kind: EditorKind) {
     features: { imageEditor: { tools: c.tools } },
   };
 }
+
+export function actionNames(kind: EditorKind) {
+  const l = CONTEXTS[kind].labels;
+  return [l["image_editor.toolbar.save"], l["image_editor.toolbar.cancel"]].filter(Boolean);
+}

@@ -4,7 +4,7 @@ import ImageEditor, {
   type ImageEditorRef,
   type ImageEditorSaveResult,
 } from "@unlayer/react-image-editor";
-import { editorOptions, type EditorKind } from "./editor-contexts";
+import { actionNames, editorOptions, type EditorKind } from "./editor-contexts";
 import { KITS, disguise } from "./decals";
 import {
   ArrowLeft,
@@ -113,7 +113,8 @@ export default function Editor({
     return () => clearTimeout(timeout);
   }, [ready, key]);
   useEffect(() => {
-    if (hostRef.current) return labelEditorActions(hostRef.current);
+    if (hostRef.current)
+      return labelEditorActions(hostRef.current, actionNames(kind));
   }, [key, ready]);
   const save = ({ dataUrl }: ImageEditorSaveResult) => {
     const verdict = judgeEditorSave({

@@ -248,6 +248,8 @@ function App() {
     [stationPop, setStationPop] = useState(0);
   const savedRef = useRef(""),
     aliasRef = useRef("");
+  const phaseRef = useRef<Phase>("home");
+  phaseRef.current = phase;
   const worldApi = useRef<WorldApi | null>(null),
     seq = useRef(0);
   const flash = useCallback(
@@ -353,12 +355,18 @@ function App() {
             .then(setBillboard)
             .catch(() => {});
         }
-        setTimeout(() => flash("WANTED", "The pier cameras clocked your paint", "red"), 900);
+        setTimeout(() => {
+          if (phaseRef.current === "drive")
+            flash("WANTED", "The pier cameras clocked your paint", "red");
+        }, 900);
         radio.current?.siren();
         text("Pier cameras just clocked your paint. Every cop in Solana Bay has a description of it.");
-        setTimeout(() => showTip("wanted"), 2600);
+        setTimeout(() => {
+          if (phaseRef.current === "drive") showTip("wanted");
+        }, 2600);
         setTimeout(
           () =>
+            phaseRef.current === "drive" &&
             text("Spray & Pray, east road. Change the look and they lose you. The more you change, the more stars you drop."),
           3200,
         );
@@ -369,7 +377,9 @@ function App() {
       }
       if (e === "lost") {
         flash("LOST THEM", "Wanted level cleared", "green");
-        setTimeout(() => showTip("lost"), 2600);
+        setTimeout(() => {
+          if (phaseRef.current === "drive") showTip("lost");
+        }, 2600);
         text("Clean. Now get my car to the meet before they reconsider.");
       }
       if (e === "bump") {
@@ -512,11 +522,11 @@ function App() {
     setBanner(null);
     setTexts([]);
     setPhase("drive");
-    setTimeout(() => flash("THE LAST DELIVERY", "Solana Bay · 19:42", "title"), 150);
-    setTimeout(
-      () => text(`Nice paint, ${alias || "GHOST"}. North pier first. Try not to be memorable.`),
-      1400,
-    );
+    setTimeout(() => flash("THE LAST DELIVERY", "Solana Bay · 19:42", "title"), 1950);
+    setTimeout(() => {
+      if (phaseRef.current === "drive")
+        text(`Nice paint, ${alias || "GHOST"}. North pier first. Try not to be memorable.`);
+    }, 2300);
   };
   const edit = () => {
     setPreview("");
@@ -592,7 +602,8 @@ function App() {
               phase === "brief" ||
               phase === "edit" ||
               phase === "editPhoto" ||
-              phase === "respray"
+              phase === "respray" ||
+              !!loading
             }
             apiRef={worldApi}
             onEvent={onEvent}
@@ -840,7 +851,16 @@ function App() {
               <button
                 className="btn primary full"
                 disabled={!worldReady || !!worldError}
-                onClick={() => setPhase("brief")}
+                onClick={() => {
+                  if (hasDecals && racked) {
+                    setSaved(racked);
+                    setPlaced({});
+                    try {
+                      localStorage.setItem("sundown-wrap", racked);
+                    } catch {}
+                  }
+                  setPhase("brief");
+                }}
               >
                 TAKE THE DELIVERY <ArrowUpRight size={18} />
               </button>
