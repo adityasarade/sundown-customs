@@ -14,10 +14,19 @@ September 24, 2026. These are observed checks, not claims of exhaustive device c
 - Downloaded and visually inspected the 1600 × 1200 PNG run card. It contains the actual edited photo, exact edited livery, callsign, score, and rounded time.
 - Browser logs revealed a deprecated Three.js shadow-map setting; replaced with supported PCFShadowMap.
 
+## Public production checks
+
+- Published at https://sundown-customs.vercel.app with source at https://github.com/adityasarade/sundown-customs. Both the app and raw source returned HTTP 200 without credentials.
+- On the production origin: native Draw → Save → fitted livery → delivery briefing → four checkpoints → completed run. Actual result: **22.7 seconds, 3,114 points**.
+- Captured a new angle, opened it in Unlayer, resized to 390 × 844, applied Sepia, and saved the finished photograph. Downloaded the resulting run card from the production app.
+- Production browser console: no captured warnings or errors during this route.
+- [Landing screenshot](screenshots/landing.png), [fitted car](screenshots/garage.png), [completed run](screenshots/completed-run.png), [mobile photo editor](screenshots/mobile-editor.png), [downloaded production run card](screenshots/production-run-card.png).
+- Vercel CLI deployment is active. Its automatic GitHub connection did not succeed, so future source pushes alone are not confirmed to redeploy; use `vercel --prod` from this project.
+
 ## Limits
 
 - Mobile checks use Chrome viewport emulation, not physical iOS or Android hardware.
 - Keyboard completion was exercised; the touch controls were inspected but a full touch-only run was not completed.
 - Timeout and drift scoring have automated coverage; a browser playthrough of every failure state was not performed.
 - The Unlayer hosted runtime needs network access. Performance varies with WebGL hardware. No claim of offline operation or commercial-game graphics is made.
-- No contest form or social post has been sent. Deployment verification will be appended after publication.
+- No contest form or social post has been sent.

@@ -41,7 +41,7 @@ https://sundown-customs.vercel.app
 
 ## Entrant’s final steps
 
-- Verify the public site and repository from a signed-out session.
+- Public site and source passed anonymous HTTP checks; the complete production route is documented in [verification](verification.md).
 - Star the upstream React Image Editor repository if required by the challenge FAQ.
 - Publish the launch post with a screenshot or gameplay clip and include its URL in the form.
 - Submit the official form and retain the receipt before **September 24, 23:59 UTC** (**September 25, 05:29 IST**).
