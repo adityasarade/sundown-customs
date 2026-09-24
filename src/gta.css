@@ -837,3 +837,166 @@ button.station:hover { color: #fff; }
   text-shadow: none;
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
 }
+
+/* Decal rack (pre-built symbols) */
+.custom-panel { max-height: calc(100svh - 21vh - 24px); overflow-y: auto; scrollbar-width: thin; }
+.decal-rack { margin: 4px 0 14px; }
+.decal-rack .field-label span { color: var(--gta-gold); }
+.rack-slots, .rack-cats { display: flex; gap: 4px; margin: 8px 0 6px; flex-wrap: wrap; }
+.rack-slots button, .rack-cats button {
+  flex: 1;
+  border: 1px solid rgba(240, 234, 217, 0.22);
+  background: transparent;
+  font: 800 10px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.1em;
+  padding: 6px 4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.rack-slots button.filled::after { content: " ●"; color: var(--gta-pink); }
+.rack-slots button.on { background: var(--cream); color: var(--ink); }
+.rack-cats button { border-color: transparent; opacity: 0.6; padding: 3px 2px; }
+.rack-cats button.on { opacity: 1; color: var(--gta-gold); border-bottom: 2px solid var(--gta-gold); }
+.rack-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.rack-grid button {
+  aspect-ratio: 1;
+  padding: 3px;
+  border: 1px solid rgba(240, 234, 217, 0.14);
+  background: rgba(0, 0, 0, 0.28);
+  transition: transform 0.15s, border-color 0.15s;
+}
+.rack-grid button:hover { transform: scale(1.08); border-color: var(--gta-cyan); }
+.rack-grid button.on { border-color: var(--gta-pink); box-shadow: 0 0 0 2px var(--gta-pink), 0 0 16px rgba(255, 79, 176, 0.5); }
+.rack-grid img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* Disguise kits in the respray booth */
+.kit-rack { display: flex; gap: 8px; align-items: stretch; margin: 0 3% 10px; overflow-x: auto; }
+.kit-label { font: 800 11px "Barlow Condensed", sans-serif; letter-spacing: 0.2em; color: var(--gta-gold); align-self: center; white-space: nowrap; }
+.kit {
+  flex: 1;
+  min-width: 150px;
+  text-align: left;
+  border: 1px solid rgba(255, 79, 176, 0.4);
+  background: rgba(20, 8, 26, 0.8);
+  padding: 8px 12px;
+  color: #fff;
+  transition: 0.15s;
+}
+.kit:hover:not(:disabled) { border-color: var(--gta-pink); background: rgba(255, 79, 176, 0.18); }
+.kit b { display: block; font: italic 900 18px "Barlow Condensed", sans-serif; color: var(--gta-pink); }
+.kit small { font-size: 11px; color: #d9cde6; }
+.kit.busy { opacity: 0.6; }
+
+/* GTA help box */
+.gta-help {
+  position: fixed;
+  z-index: 60;
+  top: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, 92vw);
+  background: rgba(8, 8, 12, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 13px 38px 15px 16px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  animation: text-in 0.4s both;
+  overflow: hidden;
+}
+.gta-help.editor { top: auto; bottom: 18px; left: auto; right: 18px; transform: none; }
+.gta-help b { display: block; font: 800 12px "Barlow Condensed", sans-serif; letter-spacing: 0.2em; color: var(--gta-gold); margin-bottom: 5px; }
+.gta-help p { font-size: 13.5px; line-height: 1.5; color: #f1eee6; }
+.gta-help em { font-style: normal; font-weight: 700; color: var(--gta-gold); }
+.gta-help em.pink { color: var(--gta-pink); }
+.gta-help em.cop { color: #6fb7ff; }
+.gta-help kbd {
+  font: 700 11px ui-monospace, Menlo, monospace;
+  background: #fff;
+  color: #000;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin: 0 2px;
+}
+.gta-help > button { position: absolute; top: 8px; right: 8px; background: none; border: 0; color: #aaa; }
+.gta-help-timer { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--gta-gold); animation: help-timer 11s linear forwards; }
+@keyframes help-timer { from { width: 100%; } to { width: 0; } }
+.phase-drive .gta-help { top: auto; bottom: 130px; }
+@media (max-width: 700px) {
+  .gta-help { top: 70px; }
+  .gta-help.editor { left: 4%; right: 4%; bottom: 12px; }
+  .phase-drive .gta-help { top: auto; bottom: 300px; }
+}
+
+/* BAYFEED */
+.bayfeed-scrim { z-index: 45; align-items: center; }
+.bayfeed {
+  width: min(420px, 94vw);
+  max-height: calc(100svh - 30px);
+  overflow-y: auto;
+  background: #fff;
+  color: #14121c;
+  border-radius: 26px;
+  padding: 16px 16px 18px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 8px #0d0b14;
+  animation: splash-in 0.45s both;
+}
+.bayfeed header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.bayfeed header button { background: none; border: 0; }
+.bf-logo { font: italic 900 26px "Barlow Condensed", sans-serif; letter-spacing: 0.02em; }
+.bf-logo b { background: linear-gradient(95deg, #ff4fb0, #ff8a5c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bf-user { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.bf-user img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid #ff4fb0; }
+.bf-user b { font-size: 14px; display: block; }
+.bf-user small { font-size: 11px; color: #7a7688; }
+.bf-follow { margin-left: auto; font: 800 12px "DM Sans", sans-serif; color: #fff; background: #ff4fb0; padding: 6px 12px; border-radius: 99px; }
+.bf-photo { width: 100%; border-radius: 12px; display: block; }
+.bf-actions { display: flex; gap: 18px; margin: 12px 2px 8px; font: 700 14px "DM Sans", sans-serif; }
+.bf-actions span { display: inline-flex; align-items: center; gap: 6px; }
+.bf-actions .liked { color: #ff2e6e; }
+.bf-caption { font-size: 13px; line-height: 1.45; margin-bottom: 8px; }
+.bf-comments { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 6px; }
+.bf-comments li { font-size: 12.5px; line-height: 1.4; animation: text-in 0.35s both; }
+.bayfeed .btn.primary { color: #14121c; }
+
+.emblem-row { display: flex; align-items: center; gap: 12px; margin: 2px 0 14px; padding: 10px; background: rgba(0,0,0,.25); border: 1px solid rgba(240,234,217,.14); }
+.emblem-row img { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px var(--gta-gold); }
+.emblem-row div { flex: 1; }
+.emblem-row .field-label { margin: 0; }
+.emblem-row small { display: block; font-size: 10px; opacity: .7; margin-top: 3px; }
+.emblem-row .btn { width: auto; min-height: 34px; padding: 0 14px; font-size: 11px; }
+.news-crew { display: inline-flex; align-items: center; gap: 8px; font: 800 13px "Barlow Condensed", sans-serif; letter-spacing: .16em; background: rgba(0,0,0,.55); padding: 4px 12px 4px 4px; border-radius: 99px; }
+.news-crew img { width: 34px; height: 34px; border-radius: 50%; }
+@media (max-width: 700px) { .news-crew { display: none; } }
+.editor-emblem .editor-intro h2 { color: var(--gta-gold); font-style: italic; }
+.editor-emblem { background: linear-gradient(180deg, rgba(14,10,24,.92), rgba(14,10,24,.98)), #0e0a18 !important; }
+.editor-emblem .editor-intro p, .editor-emblem .tool-tips span, .editor-emblem .editor-foot, .editor-emblem .icon-text, .editor-emblem .editor-credit, .editor-emblem .editor-heading .eyebrow { color: #eadcf7 !important; }
+
+/* GTA loading screen */
+.gta-loading {
+  position: fixed; inset: 0; z-index: 70; background: #000 center / cover no-repeat;
+  animation: load-fade 1.9s forwards;
+}
+.gta-loading::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.1) 50%, rgba(0,0,0,.85)); }
+@keyframes load-fade { 0% { opacity: 0; } 10%, 82% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+.gta-loading-logo {
+  position: absolute; left: 5%; bottom: 16%;
+  font: italic 900 clamp(56px, 9vw, 120px)/.85 "Barlow Condensed", Impact, sans-serif;
+  background: linear-gradient(95deg, #ff4fb0, #ff8a5c 55%, #ffcf4a); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 0 #000);
+}
+.gta-loading-logo small { display: block; font: 800 16px "Barlow Condensed", sans-serif; letter-spacing: .6em; color: #fff; -webkit-text-fill-color: #fff; margin-top: 8px; }
+.gta-loading-tip { position: absolute; left: 5%; right: 30%; bottom: 7%; font-size: 15px; color: #fff; text-shadow: 0 2px 6px #000; }
+.gta-loading-tip b { color: var(--gta-gold); margin-right: 8px; letter-spacing: .15em; }
+.gta-loading-spin { position: absolute; right: 5%; bottom: 7%; display: flex; gap: 10px; align-items: center; font: 800 14px "Barlow Condensed", sans-serif; letter-spacing: .3em; color: #fff; }
+.gta-loading-spin i { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 700px) { .gta-loading-tip { right: 5%; bottom: 13%; font-size: 13px; } .gta-loading-logo { bottom: 24%; } }
+
+.editor-photo { background: linear-gradient(180deg, rgba(8,16,24,.93), rgba(8,16,24,.98)), url("/art/chase.webp") center / cover !important; }
+.editor-photo .editor-intro h2 { color: var(--gta-cyan); font-style: italic; text-shadow: 0 0 24px rgba(82,232,255,.45); }
+.editor-photo .editor-intro p, .editor-photo .tool-tips span, .editor-photo .editor-foot, .editor-photo .icon-text, .editor-photo .editor-credit { color: #d9f6ff !important; }
+.editor-photo .editor-heading .eyebrow { color: var(--gta-cyan); letter-spacing: .2em; }
+.editor-photo .tool-tips b { color: var(--gta-cyan); }
+.editor-emblem .tool-tips b { color: var(--gta-gold); }
+.emblem-row .emblem-cycle { min-height: 34px; padding: 0 8px; }
+.hud-crew { width: 34px; height: 34px; border-radius: 50%; vertical-align: -4px; margin-right: 10px; box-shadow: 0 0 0 2px #000; }
+@media (max-width:700px){.hud-crew{width:22px;height:22px;margin-right:6px}}

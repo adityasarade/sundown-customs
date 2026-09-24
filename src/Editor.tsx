@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ImageEditor, {
+  type ImageEditorOptions,
   type ImageEditorRef,
   type ImageEditorSaveResult,
 } from "@unlayer/react-image-editor";
+import { editorOptions, type EditorKind } from "./editor-contexts";
+import { KITS, disguise } from "./decals";
 import {
   ArrowLeft,
   Check,
@@ -25,7 +28,7 @@ export default function Editor({
   onSave: (url: string) => void;
   onCancel: () => void;
   onPreview: (url: string) => void;
-  kind?: "wrap" | "photo" | "respray";
+  kind?: EditorKind;
   stars?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -63,27 +66,25 @@ export default function Editor({
   }, [kind, source]);
   const liveCleared = Math.min(stars, Math.floor(live / 0.08));
   const options = useMemo(
-    () => ({
-      theme: (kind === "respray" ? "dark" : "light") as "dark" | "light",
-      aiAssistantOpenState: "closed" as const,
-      features: {
-        imageEditor: {
-          tools: {
-            crop: true,
-            filter: true,
-            draw: true,
-            text: true,
-            shapes: true,
-            stickers: true,
-            resize: false,
-            frame: false,
-            corners: false,
-          },
-        },
-      },
-    }),
+    () => editorOptions(kind) as unknown as ImageEditorOptions,
     [kind],
   );
+  const kitted = useRef(false);
+  const [kitBusy, setKitBusy] = useState("");
+  const applyKit = async (id: (typeof KITS)[number]["id"]) => {
+    const editor = ref.current?.editor;
+    if (!editor || kitBusy) return;
+    setKitBusy(id);
+    try {
+      const url = await disguise(source, id);
+      await editor.reset(url);
+      kitted.current = true;
+      dirty.current = true;
+      setHint("Disguise kit loaded into the booth. Tweak it, then Respray & go.");
+    } finally {
+      setKitBusy("");
+    }
+  };
   useEffect(() => {
     const id = setInterval(() => {
       const editor = ref.current?.editor;
@@ -119,7 +120,7 @@ export default function Editor({
       saved: dataUrl,
       baseline: baseline.current,
       current: ref.current?.editor?.getImage() ?? null,
-      sawChanges: dirty.current,
+      sawChanges: dirty.current || kitted.current,
       changeTrackingAvailable: available.current,
     });
     if (kind !== "photo" && !verdict.edited) {
@@ -137,35 +138,41 @@ export default function Editor({
       <div className="editor-heading">
         <button className="icon-text" onClick={onCancel}>
           <ArrowLeft size={16} />{" "}
-          {kind === "wrap"
+          {kind === "wrap" || kind === "emblem"
             ? "Back to garage"
             : kind === "respray"
               ? "Drive off unchanged"
               : "Back to photo"}
         </button>
         <span className="eyebrow">
-          {kind === "wrap"
+          {kind === "emblem"
+            ? "CREW EMBLEM CREATOR"
+            : kind === "wrap"
             ? "02 / THE PAINT BOOTH"
             : kind === "respray"
               ? `SPRAY & PRAY · ${"★".repeat(stars)}${"☆".repeat(Math.max(0, 5 - stars))}`
-              : "THE DARKROOM"}
+              : "SNAPPIX · DARKROOM"}
         </span>
         <span className="editor-credit">Powered by Unlayer</span>
       </div>
       <div className="editor-intro">
         <h2>
-          {kind === "wrap"
+          {kind === "emblem"
+            ? "Rep your crew."
+            : kind === "wrap"
             ? "Leave your mark."
             : kind === "respray"
               ? "Lose the heat."
-              : "Make the cover."}
+              : "Make it post-worthy."}
         </h2>
         <p>
-          {kind === "wrap"
-            ? "Add your name, spray a line, or change the mood. Save to fit your work to the car."
+          {kind === "emblem"
+            ? "Your crew emblem rides on the roof of your car, next to your name on BAYFEED, and on Bay 9 News. Stack symbols, shapes and a crew name, then Rep the crew."
+            : kind === "wrap"
+            ? "Your decals are already on. Tag your name, spray a stripe, stick on more. Fit the wrap to put it on the car."
             : kind === "respray"
               ? "Bay PD has a description of this exact paint. Repaint it — every 8% of the livery you change shakes off one star. The clock is stopped."
-              : "Crop, grade, or caption your actual 3D shot. Save to keep the final photograph."}
+              : "Your actual 3D shot. Frame it up, grade it, add a border and a caption — then post it to BAYFEED."}
         </p>
       </div>
       {kind === "respray" && (
@@ -193,22 +200,39 @@ export default function Editor({
           </span>
         </div>
       )}
+      {kind === "respray" && (
+        <div className="kit-rack">
+          <span className="kit-label">DISGUISE KITS</span>
+          {KITS.map((k) => (
+            <button
+              key={k.id}
+              className={`kit ${kitBusy === k.id ? "busy" : ""}`}
+              onClick={() => applyKit(k.id)}
+              disabled={!ready || !!kitBusy}
+              title={k.blurb}
+            >
+              <b>{k.name}</b>
+              <small>{k.blurb}</small>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="tool-tips">
         <span>
           <b>01</b>{" "}
-          {kind === "respray" ? "Filter → new colours, fast" : "Text → your crew name"}
+          {kind === "respray" ? "Kit or Instant respray → big change, fast" : "Tag → your crew name"}
         </span>
         <span>
           <b>02</b>{" "}
-          {kind === "respray" ? "Shapes / Draw → cover it up" : "Draw → a signature stripe"}
+          {kind === "respray" ? "Cover-up / Spray can → hide the old paint" : "Spray can → a signature stripe"}
         </span>
         <span>
           <b>03</b> Save →{" "}
           {kind === "wrap"
-            ? "fit the wrap"
+            ? "Fit the wrap"
             : kind === "respray"
-              ? "drop the stars"
-              : "keep the shot"}{" "}
+              ? "Respray & go"
+              : "Post to BAYFEED"}{" "}
           <Check size={13} />
         </span>
       </div>

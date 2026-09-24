@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1 --port 5188",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5188",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:e2e": "node tests/e2e/flow.mjs",
+    "test:e2e:mobile": "E2E_MOBILE=1 node tests/e2e/flow.mjs"
   },
   "dependencies": {
     "@unlayer/react-image-editor": "^1.0.2",
@@ -21,6 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^6.0.3",
+    "playwright": "^1.62.1",
     "typescript": "^6.0.3",
     "vite": "^8.1.3"
   }

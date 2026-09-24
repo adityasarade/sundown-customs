@@ -11,6 +11,7 @@ type Props = {
   before: string;
   after: string;
   changed: number;
+  emblem?: string;
   onPhoto: () => void;
   onRetry: () => void;
 };
@@ -88,11 +89,12 @@ async function exportBroadcast(p: Props, headline: string) {
   c.width = 1600;
   c.height = 900;
   const ctx = c.getContext("2d")!;
-  const [bg, cctv, before, after] = await Promise.all([
+  const [bg, cctv, before, after, crest] = await Promise.all([
     img("/art/anchor.webp"),
     img(p.cctv),
     img(p.before),
     img(p.after),
+    img(p.emblem ?? ""),
   ]);
   const g = ctx.createLinearGradient(0, 0, 1600, 900);
   g.addColorStop(0, "#2a1140");
@@ -158,6 +160,14 @@ async function exportBroadcast(p: Props, headline: string) {
   ctx.fillStyle = "#fff";
   ctx.font = "800 24px 'Barlow Condensed', Impact, sans-serif";
   ctx.fillText("● LIVE", 368, 85);
+  if (crest) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(500, 76, 34, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(crest, 466, 42, 68, 68);
+    ctx.restore();
+  }
   // Lower third.
   ctx.fillStyle = "#e3163b";
   ctx.fillRect(0, 752, 230, 58);
@@ -202,6 +212,12 @@ export default function News(p: Props) {
         </span>
         <span className="news-live">● LIVE</span>
         <span className="news-place">SOLANA BAY · 19:48</span>
+        {p.emblem && (
+          <span className="news-crew">
+            <img src={p.emblem} alt="Suspect crew emblem" />
+            SUSPECT CREW
+          </span>
+        )}
       </header>
       <div className="news-inset">
         <div className="cctv">

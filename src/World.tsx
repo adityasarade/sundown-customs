@@ -69,6 +69,7 @@ export type WorldProps = {
   apiRef?: React.MutableRefObject<WorldApi | null>;
   onEvent?: (e: DriveEvent, shot?: string) => void;
   underglow?: string | null;
+  emblemUrl?: string;
 };
 const PI = Math.PI;
 const materials = new Map<string, THREE.MeshStandardMaterial>();
@@ -589,6 +590,23 @@ export function World(all: WorldProps) {
     const { city, pad, line, marker, beam } = buildCity(scene);
     void city;
     const car = makeCar(props.current.paint, "hero");
+    // Crew emblem on the roof: visible from the chase camera the whole run.
+    const emblemMat = new THREE.MeshStandardMaterial({
+      color: "#ffffff",
+      transparent: true,
+      roughness: 0.4,
+      metalness: 0.1,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+    });
+    const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.86), emblemMat);
+    emblem.rotation.x = -Math.PI / 2 + 0.03;
+    emblem.position.set(0, 1.835, 0.37);
+    emblem.visible = false;
+    car.group.add(emblem);
+    let lastEmblem = "",
+      emblemTex: THREE.Texture | null = null;
     scene.add(car.group);
     car.group.position.set(0, 0, 40);
     const gates = CHECKPOINTS.map((cp, i) => {
@@ -835,6 +853,20 @@ export function World(all: WorldProps) {
       if (p.paused && p.mode !== "drive") {
         raf = requestAnimationFrame(tick);
         return;
+      }
+      if ((p.emblemUrl ?? "") !== lastEmblem) {
+        lastEmblem = p.emblemUrl ?? "";
+        if (!lastEmblem) emblem.visible = false;
+        else
+          new THREE.TextureLoader().load(lastEmblem, (tex) => {
+            if (dead) return tex.dispose();
+            tex.colorSpace = THREE.SRGBColorSpace;
+            emblemTex?.dispose();
+            emblemTex = tex;
+            emblemMat.map = tex;
+            emblemMat.needsUpdate = true;
+            emblem.visible = true;
+          });
       }
       if (p.underglow !== lastGlow) {
         lastGlow = p.underglow;
@@ -1134,6 +1166,7 @@ export function World(all: WorldProps) {
       materials.clear();
       windowMats.length = 0;
       currentTexture?.dispose();
+      emblemTex?.dispose();
       composer.dispose();
       renderer.dispose();
       renderer.domElement.remove();

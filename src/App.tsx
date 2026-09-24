@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -42,6 +43,71 @@ import {
 import { CHECKPOINTS, type DriveEvent } from "./driving";
 import { paintChange } from "./paint-diff";
 import News from "./News";
+import Home from "./Home";
+import DecalRack from "./DecalRack";
+import Guide from "./Guide";
+import BayFeed from "./BayFeed";
+import { composeLivery, type Slot } from "./decals";
+import { createEmblem } from "./emblem";
+
+type Tip = { id: string; title?: string; text: string };
+const LOADING_TIPS = [
+  "The more of your paint you change at Spray & Pray, the more wanted stars you drop.",
+  "Police cruisers drive the exact line you drove. Cut clean corners.",
+  "Stalling near a cruiser fills the BUSTED meter. Keep moving.",
+  "Drifting through corners earns cash. Hold SPACE while steering at speed.",
+  "Press R while driving to switch radio stations.",
+  "Your crew emblem rides on the roof. Bay PD has noticed.",
+  "Disguise kits in the respray booth change almost every pixel.",
+];
+const LOADING_ART = ["/art/chase.webp", "/art/respray.webp", "/art/cover.webp"];
+const TIPS: Record<string, Tip> = {
+  garage: {
+    id: "garage",
+    title: "WELCOME TO SUNDOWN CUSTOMS",
+    text: "Pick a starting livery, stamp a few symbols from the <em>Decal Rack</em>, then hit <em>Make it yours</em> to paint in Unlayer.",
+  },
+  editor: {
+    id: "editor",
+    title: "THE PAINT BOOTH",
+    text: "<em>Tag</em> = text, <em>Spray can</em> = freehand, <em>Decals</em> = stickers, <em>Tint</em> = filters. When it looks right, hit <em>Fit the wrap</em> (top right).",
+  },
+  fitted: {
+    id: "fitted",
+    title: "THAT’S YOUR CAR NOW",
+    text: "Your exact saved pixels are on the hood and doors. Drag to spin it, choose <em>underglow</em>, then <em>Take the delivery</em>.",
+  },
+  drive: {
+    id: "drive",
+    title: "DRIVING",
+    text: "Hold <kbd>W</kbd>/<kbd>↑</kbd> to drive, <kbd>A</kbd><kbd>D</kbd> to steer. Head through the <em>yellow gates</em>. <kbd>SPACE</kbd> drifts, <kbd>SHIFT</kbd> boosts, <kbd>R</kbd> changes station.",
+  },
+  wanted: {
+    id: "wanted",
+    title: "YOU’RE WANTED",
+    text: "Cops follow the exact line you drive. Keep your speed up — stalling fills the <em class=cop>BUSTED</em> meter. The pink <em class=pink>$</em> on the radar is <em class=pink>Spray &amp; Pray</em>.",
+  },
+  respray: {
+    id: "respray",
+    title: "SPRAY & PRAY",
+    text: "Every <em>8%</em> of paint you change drops a star. <em>Disguise kits</em> and <em>Instant respray</em> filters change the most pixels fastest. Then <em>Respray &amp; go</em>.",
+  },
+  lost: {
+    id: "lost",
+    title: "HEAT’S OFF",
+    text: "Follow the yellow gates back to the garage. Drift through corners for bonus cash.",
+  },
+  result: {
+    id: "result",
+    title: "JOB DONE",
+    text: "Bay 9 already has the story. Hit <em>You made the news</em>, then save the broadcast.",
+  },
+  photo: {
+    id: "photo",
+    title: "SNAPPIX",
+    text: "Drag to frame your car, <em>Capture this angle</em>, then open it in <em>Snappix</em> to add borders, filters and a caption.",
+  },
+};
 import { createWrap, downloadImage, downloadRunCard } from "./artwork";
 import { Radio, STATIONS } from "./audio";
 import Minimap from "./Minimap";
@@ -57,6 +123,7 @@ type Phase =
   | "photo"
   | "editPhoto"
   | "respray"
+  | "emblem"
   | "news";
 type Banner = { id: number; title: string; sub?: string; tone: string };
 type Respray = {
@@ -120,6 +187,14 @@ const load = (key: string, fallback: string) => {
     return fallback;
   }
 };
+const CREW_BASES = ["bay-bonez", "sunset-run", "neon-bird", "causeway-kings", "snake-eyes"];
+function createEmblemSafe(alias: string, base: string) {
+  try {
+    return createEmblem(alias, base);
+  } catch {
+    return "";
+  }
+}
 function App() {
   const [phase, setPhase] = useState<Phase>("home"),
     [style, setStyle] = useState(0),
@@ -148,6 +223,24 @@ function App() {
     [glow, setGlow] = useState<string | null>(
       () => load("sundown-glow", "") || null,
     );
+  const [tip, setTip] = useState<Tip | null>(null),
+    seenTips = useRef(new Set<string>()),
+    [placed, setPlaced] = useState<Partial<Record<Slot, string>>>({}),
+    [racked, setRacked] = useState(""),
+    [posted, setPosted] = useState(false),
+    [emblem, setEmblem] = useState(() => load("sundown-emblem", ""));
+  const [crewBase, setCrewBase] = useState(0);
+  const defaultEmblem = useMemo(
+    () => createEmblemSafe(alias, CREW_BASES[crewBase]),
+    [alias, crewBase],
+  );
+  const emblemUrl = emblem || defaultEmblem;
+  const showTip = useCallback((id: keyof typeof TIPS) => {
+    if (seenTips.current.has(id)) return;
+    seenTips.current.add(id);
+    setTip(TIPS[id]);
+  }, []);
+  const [loading, setLoading] = useState<{ art: string; tip: string } | null>(null);
   const [intro, setIntro] = useState(true),
     [station, setStation] = useState(0),
     [stationPop, setStationPop] = useState(0);
@@ -172,10 +265,28 @@ function App() {
     }),
     captureRef = useRef<(() => string) | null>(null),
     radio = useRef<Radio | null>(null);
+  const baseWrap = saved || templates[style];
+  const hasDecals = Object.values(placed).some(Boolean);
+  useEffect(() => {
+    if (!hasDecals) {
+      setRacked("");
+      return;
+    }
+    let live = true;
+    composeLivery(baseWrap, placed)
+      .then((url) => live && setRacked(url))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [baseWrap, placed, hasDecals]);
+  const garageWrap = (hasDecals && racked) || baseWrap;
   const activeWrap =
     (phase === "edit" || phase === "respray") && preview
       ? preview
-      : saved || templates[style];
+      : phase === "garage" || phase === "edit"
+        ? garageWrap
+        : baseWrap;
   const outcome = !result
     ? "passed"
     : result.won
@@ -202,6 +313,26 @@ function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [phase]);
   useEffect(() => {
+    if (!tip) return;
+    const t = setTimeout(() => setTip(null), 11000);
+    return () => clearTimeout(t);
+  }, [tip]);
+  useEffect(() => {
+    if (phase === "garage") {
+      const t = setTimeout(() => showTip(saved ? "fitted" : "garage"), intro ? 3500 : 400);
+      return () => clearTimeout(t);
+    }
+    if (phase === "edit") showTip("editor");
+    else if (phase === "drive") showTip("drive");
+    else if (phase === "respray") showTip("respray");
+    else if (phase === "result") {
+      const t = setTimeout(() => showTip("result"), 3300);
+      return () => clearTimeout(t);
+    } else if (phase === "photo") showTip("photo");
+    else setTip(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, saved]);
+  useEffect(() => {
     if (!banner) return;
     const timer = setTimeout(() => setBanner(null), 2600);
     return () => clearTimeout(timer);
@@ -214,6 +345,7 @@ function App() {
         setTimeout(() => flash("WANTED", "The pier cameras clocked your paint", "red"), 900);
         radio.current?.siren();
         text("Pier cameras just clocked your paint. Every cop in Solana Bay has a description of it.");
+        setTimeout(() => showTip("wanted"), 2600);
         setTimeout(
           () =>
             text("Spray & Pray, east road. Change the look and they lose you. The more you change, the more stars you drop."),
@@ -226,6 +358,7 @@ function App() {
       }
       if (e === "lost") {
         flash("LOST THEM", "Wanted level cleared", "green");
+        setTimeout(() => showTip("lost"), 2600);
         text("Clean. Now get my car to the meet before they reconsider.");
       }
       if (e === "bump") {
@@ -235,7 +368,7 @@ function App() {
       if (e === "closing")
         flash("THEY’RE ON YOU", "Speed up or get busted", "red");
     },
-    [flash, text],
+    [flash, text, showTip],
   );
   const respraySave = async (url: string) => {
     const before = saved || templates[style];
@@ -334,6 +467,7 @@ function App() {
     }
   };
   const saveWrap = (url: string) => {
+    setPlaced({});
     setSaved(url);
     setPreview("");
     setPhase("garage");
@@ -353,6 +487,11 @@ function App() {
       startRun: () => startRun(),
     };
   const startRun = () => {
+    setLoading({
+      art: LOADING_ART[Math.floor(Math.random() * LOADING_ART.length)],
+      tip: LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)],
+    });
+    setTimeout(() => setLoading(null), 1900);
     setRunId((v) => v + 1);
     setPaused(false);
     setTelemetry(emptyTelemetry);
@@ -423,7 +562,7 @@ function App() {
     <main className={`app phase-${phase}`}>
       {phase !== "home" && (
         <div
-          className={`world-stage ${worldVisible ? "" : "hidden"} ${phase === "edit" || phase === "respray" ? "editor-world" : ""}`}
+          className={`world-stage ${worldVisible ? "" : "hidden"} ${phase === "edit" || phase === "respray" || phase === "emblem" ? "editor-world" : ""}`}
         >
           <World
             mode={
@@ -446,6 +585,7 @@ function App() {
             apiRef={worldApi}
             onEvent={onEvent}
             underglow={glow}
+            emblemUrl={emblemUrl}
             autoThrottle={autoThrottle}
             onTelemetry={setTelemetry}
             onFinish={finish}
@@ -471,7 +611,7 @@ function App() {
           )}
         </div>
       )}
-      {phase !== "edit" && phase !== "editPhoto" && phase !== "respray" && phase !== "news" && (
+      {phase !== "home" && phase !== "edit" && phase !== "editPhoto" && phase !== "respray" && phase !== "emblem" && phase !== "news" && (
         <header className="topbar">
           <button
             className="brand"
@@ -511,73 +651,11 @@ function App() {
         </header>
       )}
       {phase === "home" && (
-        <section className="home">
-          <div className="cover-art" />
-          <div className="cover-shade" />
-          <div className="home-content">
-            <span className="eyebrow">
-              <span className="small-line" /> ★★★★★ AN AFTER-HOURS COASTAL ESCAPE
-            </span>
-            <h1>
-              GOOD PAINT.
-              <br />
-              BAD <em>IDEAS.</em>
-            </h1>
-            <p>
-              Paint your own car. Get five stars for it.
-              <br />Repaint it to disappear. Make the evening news.
-            </p>
-            <button
-              className="btn primary hero-cta"
-              onClick={() => setPhase("garage")}
-            >
-              OPEN THE GARAGE <ArrowUpRight size={23} />
-            </button>
-            <div className="home-meta">
-              <span>3–5 MINUTES</span>
-              <span>NO SIGN-UP</span>
-              <span>YOUR CAR. YOUR ART.</span>
-            </div>
-          </div>
-          <div className="cover-caption">
-            <span className="caption-dot" /> YOUR SHIFT STARTS WHEN THEIRS ENDS.
-            <span className="coordinates">25°46′ N / 80°11′ W</span>
-          </div>
-          <div className="home-bottom">
-            <div>
-              <b>01</b>
-              <span>
-                MAKE YOUR MARK<small>Paint a livery in Unlayer. It’s the car.</small>
-              </span>
-            </div>
-            <div>
-              <b>02</b>
-              <span>
-                GET NOTICED
-                <small>Pier cameras. Five stars. A helicopter.</small>
-              </span>
-            </div>
-            <div>
-              <b>03</b>
-              <span>
-                RESPRAY TO ESCAPE
-                <small>Change the paint. Lose the stars.</small>
-              </span>
-            </div>
-            <div>
-              <b>04</b>
-              <span>
-                MAKE THE NEWS
-                <small>Bay 9 airs your car. Save the broadcast.</small>
-              </span>
-            </div>
-            <span className="built-with">
-              BUILT WITH
-              <br />
-              <strong>Unlayer Image Editor ↗</strong>
-            </span>
-          </div>
-        </section>
+        <Home
+          onStart={() => setPhase("garage")}
+          onSound={toggleSound}
+          sound={sound}
+        />
       )}
       {phase === "garage" && intro && (
         <button
@@ -642,7 +720,7 @@ function App() {
             </div>
             {saved ? (
               <div className="saved-swatch">
-                <img src={saved} alt="Your saved custom livery" />
+                <img src={garageWrap} alt="Your saved custom livery" />
                 <span>
                   <Check size={13} /> YOUR ORIGINAL
                 </span>
@@ -677,6 +755,31 @@ function App() {
                 ))}
               </div>
             )}
+            <div className="emblem-row">
+              {emblemUrl && <img src={emblemUrl} alt="Your crew emblem" />}
+              <div>
+                <span className="field-label">CREW EMBLEM</span>
+                <small>Rides on your roof, BAYFEED and the news.</small>
+              </div>
+              <button
+                className="btn text emblem-cycle"
+                aria-label="Next crew badge"
+                title="Next crew badge"
+                onClick={() => {
+                  setEmblem("");
+                  try {
+                    localStorage.removeItem("sundown-emblem");
+                  } catch {}
+                  setCrewBase((i) => (i + 1) % CREW_BASES.length);
+                }}
+              >
+                <RotateCcw size={14} />
+              </button>
+              <button className="btn secondary" onClick={() => setPhase("emblem")}>
+                EDIT
+              </button>
+            </div>
+            <DecalRack placed={placed} onChange={setPlaced} />
             <div className="paint-row">
               <span className="field-label">BODY FINISH</span>
               <div>
@@ -747,16 +850,26 @@ function App() {
           </div>
         </section>
       )}
-      {(phase === "edit" || phase === "editPhoto" || phase === "respray") && (
+      {(phase === "edit" || phase === "editPhoto" || phase === "respray" || phase === "emblem") && (
         <Suspense
           fallback={
             <div className="world-loader">Opening the paint booth…</div>
           }
         >
           <Editor
-            source={phase === "editPhoto" ? photo : saved || templates[style]}
+            source={
+              phase === "emblem"
+                ? emblemUrl
+                : phase === "editPhoto"
+                ? photo
+                : phase === "edit"
+                  ? garageWrap
+                  : baseWrap
+            }
             kind={
-              phase === "editPhoto"
+              phase === "emblem"
+                ? "emblem"
+                : phase === "editPhoto"
                 ? "photo"
                 : phase === "respray"
                   ? "respray"
@@ -765,19 +878,29 @@ function App() {
             stars={telemetry.stars}
             onPreview={onPreview}
             onSave={
-              phase === "respray"
+              phase === "emblem"
+                ? (url) => {
+                    setEmblem(url);
+                    try {
+                      localStorage.setItem("sundown-emblem", url);
+                    } catch {}
+                    setPhase("garage");
+                    setNotice("Crew emblem locked in. Check the roof.");
+                  }
+                : phase === "respray"
                 ? respraySave
                 : phase === "editPhoto"
                 ? (url) => {
                     setPhoto(url);
                     setPhase("photo");
-                    setNotice("Your photograph, finished. Download it below.");
+                    setPosted(true);
                   }
                 : saveWrap
             }
             onCancel={() => {
               setPreview("");
-              if (phase === "respray") {
+              if (phase === "emblem") setPhase("garage");
+              else if (phase === "respray") {
                 setPhase("drive");
                 text("Walked out? Bold. Loop back through Spray & Pray if you change your mind.");
               } else setPhase(phase === "editPhoto" ? "photo" : "garage");
@@ -894,7 +1017,10 @@ function App() {
                 />
               ))}
             </div>
-            <b className="cash">${telemetry.payout.toLocaleString()}</b>
+            <b className="cash">
+              {emblemUrl && <img className="hud-crew" src={emblemUrl} alt="" />}$
+              {telemetry.payout.toLocaleString()}
+            </b>
             <span
               className={`clock ${telemetry.remaining < 20 ? "urgent" : ""}`}
             >
@@ -1124,6 +1250,7 @@ function App() {
           outcome={outcome}
           result={result}
           cctv={wantedShot || result.snapshot}
+          emblem={emblemUrl}
           before={respray?.before || saved}
           after={respray?.after || ""}
           changed={respray?.changed ?? 0}
@@ -1170,7 +1297,7 @@ function App() {
               onClick={() => setPhase("editPhoto")}
             >
               <Paintbrush size={17} />
-              EDIT PHOTO IN UNLAYER
+              OPEN IN SNAPPIX
             </button>
             <div className="download-pair">
               <button
@@ -1215,6 +1342,34 @@ function App() {
           </span>
         </section>
       )}
+      {loading && (
+        <div className="gta-loading" style={{ backgroundImage: `url(${loading.art})` }}>
+          <div className="gta-loading-logo">
+            SUNDOWN<small>CUSTOMS</small>
+          </div>
+          <p className="gta-loading-tip">
+            <b>TIP</b> {loading.tip}
+          </p>
+          <span className="gta-loading-spin">
+            <i /> LOADING
+          </span>
+        </div>
+      )}
+      <Guide
+        tip={tip}
+        onClose={() => setTip(null)}
+        placement={phase === "edit" || phase === "respray" || phase === "editPhoto" || phase === "emblem" ? "editor" : "top"}
+      />
+      {posted && phase === "photo" && (
+        <BayFeed
+          photo={photo}
+          alias={alias || "GHOST"}
+          avatar={emblemUrl || baseWrap}
+          score={result?.score ?? 0}
+          outcome={outcome}
+          onClose={() => setPosted(false)}
+        />
+      )}
       {notice && (
         <div className="toast" role="status">
           <Check size={17} />
@@ -1226,19 +1381,6 @@ function App() {
             <X size={14} />
           </button>
         </div>
-      )}
-      {phase === "home" && (
-        <footer className="site-footer">
-          <span>AN ORIGINAL PLAYABLE EXPERIENCE</span>
-          <a
-            href="https://github.com/adityasarade/sundown-customs"
-            target="_blank"
-            rel="noreferrer"
-          >
-            SOURCE CODE <ArrowUpRight size={12} />
-          </a>
-          <span>PAINT LOCAL. DRIVE FICTIONAL.</span>
-        </footer>
       )}
     </main>
   );
