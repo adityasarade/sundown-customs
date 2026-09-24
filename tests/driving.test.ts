@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CHECKPOINTS,
+  RESPRAY,
   RUN_SECONDS,
+  applyRespray,
+  copPose,
   createDriveState,
   runScore,
+  starsFor,
   stepDrive,
 } from "../src/driving.ts";
 
@@ -85,4 +89,90 @@ test("keeps scores nonnegative and rewards a completed route", () => {
       elapsed: 40,
     }) > runScore(base),
   );
+});
+
+test("reaching NORTH PIER clocks the paint and puts three cops on the chase", () => {
+  let state = createDriveState();
+  let sawWanted = false;
+  for (let i = 0; i < 400 && !sawWanted; i += 1) {
+    state = stepDrive(state, { ...idle, gas: true }, 0.05);
+    if (state.events.includes("wanted")) sawWanted = true;
+  }
+  assert.ok(sawWanted, "expected a wanted event before reaching the pier");
+  assert.equal(state.wantedTriggered, true);
+  assert.ok(state.heat >= 60);
+  assert.equal(starsFor(state.heat), 3);
+  assert.equal(state.cops.length, 3);
+  assert.ok(state.events.includes("checkpoint"));
+});
+
+test("a respray clears stars in proportion to how much paint changed", () => {
+  const wanted = {
+    ...createDriveState(),
+    wantedTriggered: true,
+    heat: 60,
+    cops: [{ lag: 70 }, { lag: 86 }, { lag: 102 }],
+  };
+  assert.equal(starsFor(wanted.heat), 3);
+
+  const light = applyRespray(wanted, 0.09);
+  assert.equal(light.cleared, 1);
+  assert.equal(starsFor(light.state.heat), 2);
+  assert.ok(light.state.cops.length > 0);
+  assert.equal(light.state.events.includes("lost"), false);
+
+  const heavy = applyRespray(wanted, 0.3);
+  assert.equal(heavy.cleared, 3);
+  assert.equal(heavy.remaining, 0);
+  assert.equal(heavy.state.heat, 0);
+  assert.equal(heavy.state.cops.length, 0);
+  assert.ok(heavy.state.events.includes("lost"));
+
+  const untouched = applyRespray(wanted, 0);
+  assert.equal(untouched.cleared, 1, "a respray always shakes off at least one star");
+});
+
+test("stalling with a cop on your bumper eventually busts you", () => {
+  let state = {
+    ...createDriveState(),
+    wantedTriggered: true,
+    heat: 60,
+    speed: 0,
+    cops: [{ lag: 11 }],
+  };
+  for (let i = 0; i < 120 && !state.finished; i += 1) {
+    state = stepDrive(state, idle, 0.05);
+  }
+  assert.equal(state.finished, true);
+  assert.equal(state.busted, true);
+  assert.equal(state.won, false);
+});
+
+test("driving into the respray booth with heat emits one respray event", () => {
+  let state = {
+    ...createDriveState(),
+    heat: 10,
+    x: RESPRAY.x,
+    z: RESPRAY.z,
+    speed: 0,
+  };
+  let resprayEvents = 0;
+  for (let i = 0; i < 20; i += 1) {
+    state = stepDrive(state, idle, 0.05);
+    resprayEvents += state.events.filter((e) => e === "respray").length;
+  }
+  assert.equal(resprayEvents, 1);
+  assert.equal(state.resprayUsed, false, "only a saved respray uses the booth");
+  assert.equal(applyRespray(state, 0.3).state.resprayUsed, true);
+});
+
+test("copPose keeps a pursuing cop on finite coordinates along the trail", () => {
+  let state = createDriveState();
+  for (let i = 0; i < 60; i += 1)
+    state = stepDrive(state, { ...idle, gas: true, right: true }, 0.05);
+  assert.ok(state.trail.length > 1);
+  const pose = copPose(state, { lag: 20 });
+  assert.ok(Number.isFinite(pose.x));
+  assert.ok(Number.isFinite(pose.z));
+  assert.ok(Number.isFinite(pose.heading));
 });

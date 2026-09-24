@@ -14,11 +14,11 @@ The wider prior scan also covers wanted posters, investigative terminals, postca
 
 ## How the new entry addresses the rubric
 
-- **Creativity:** a coastal customization side activity with a playable delivery, an inspectable personalized car, and a photo studio that returns to the editor.
-- **Visual execution:** original illustrated cover, restrained cream/coral/teal interface, procedural low-poly 3D, bespoke liveries, clear progress, and responsive tool settings.
-- **Editor use:** native editing unlocks the run; exact saved pixels remain on the car, in photographs, and in downloadable livery/card artifacts. A second native editor pass finishes the actual captured scene.
-- **Overall experience:** no account, prepared starting artwork, keyboard/touch controls, optional automatic throttle, pause/retry, retained car, personal best, and useful exports.
+- **Creativity:** the livery you paint becomes evidence — clocked by pier cameras, chased by cops that drive your own line, and escaped by repainting it live inside the editor, mid-run. The wanted/respray loop, the Bay 9 news broadcast built from real captured stills, and a return to the editor for photo mode are not decoration on top of a driving demo; they're the game.
+- **Visual execution:** original illustrated cover, Nico, chase, respray, and news-anchor art, a GTA-style HUD (stars, cash, clock, radar with a respray blip), a helicopter searchlight at three-plus stars, and a satirical news segment composed from the actual WebGL canvas — not a mock-up.
+- **Editor use:** native `onSave` unlocks the run, drops wanted stars, and finalizes photographs; a dark-themed respray mode with a live per-pixel change meter runs a second, higher-stakes editor pass mid-mission; the exact saved bitmap is what the cameras "saw" and what they compare against.
+- **Overall experience:** no account, prepared starting artwork, keyboard/touch controls, optional automatic throttle, pause/retry, retained car, personal best, and a downloadable broadcast PNG plus run card.
 
-The strongest differentiator is **owning and driving the object you just designed**, then photographing it. The livery does not secretly alter physics or earn fabricated aesthetic scores. This is a bounded, polished arcade experience, not a claim to match a commercial open-world game.
+The strongest differentiator is **the editor as a getaway tool**: what you paint is what the cops chase, and repainting it live — measured pixel-by-pixel, not guessed — is how you lose them. The livery never secretly alters physics or earns a fabricated aesthetic score; the chase, the bust timer, and the star math are plain, tested driving logic. This is a bounded, polished arcade experience, not a claim to match a commercial open-world game.
 
 Full research notes are retained in the parent workspace at `docs/unlayer-sept24-research.md`.

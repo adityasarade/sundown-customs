@@ -10,32 +10,30 @@ Prepared September 24, 2026. Publication and validation status is recorded in `v
 
 ## One-line pitch
 
-Paint your getaway car in Unlayer, drive your exact artwork around a 3D coastal circuit, then photograph the evidence.
+Paint your getaway car in Unlayer, get five stars for it, then repaint it mid-chase to vanish — and watch Bay 9 News air your car.
 
 ## Form-ready description
 
-Sundown Customs is an original GTA-inspired custom-car side activity set in fictional Solana Bay. You pick a starting livery, make it yours in Unlayer React Image Editor, and fit the exact saved bitmap to the hood and side panels of an original 3D coupe. An untouched native Save is rejected when the editor’s change signals are available; there is no alternate customization button that bypasses the editor.
+Sundown Customs is an original GTA-inspired crime-arcade set in fictional Solana Bay, built around Unlayer React Image Editor. You paint a livery in the editor and the exact saved bitmap becomes the hood and door texture of a drivable 3D coupe (plus body finish and neon underglow).
 
-Then you actually drive your car. The Last Delivery sends you through four coastal checkpoints with traffic, drift points, boost, and a 90-second closing time. Keyboard and touch controls, an optional automatic throttle, tab-switch pause, retry, and a retained personal best keep the experience approachable and replayable. Livery choices change appearance; driving determines the score.
+Then Nico sends you on The Last Delivery. At the north pier the harbour cameras clock your paint: WANTED. Police cruisers chase you along your own driving line, a helicopter searchlight joins at three stars, and a BUSTED meter fills if you stall. Your way out is Spray & Pray: drive into the respray booth and the game pauses while Unlayer reopens on your current livery. A straight per-pixel comparison between the paint the cameras saw and your new save measures how much you changed — every 8% drops a wanted star, with a live meter while you paint. The repainted bitmap is fitted to the car instantly and the chase resumes.
 
-After the run, drag to frame the car and capture the real WebGL scene. Open that shot in React Image Editor for another creative pass. Download the exact livery, finished photograph, or personalized 1600 × 1200 run card with real run statistics. The cover illustration, procedural 3D models, canvas liveries, fictional copy, and opt-in synthesized music are original. No login, backend, runtime AI service, API key, or franchise assets are required.
+Finish (MISSION PASSED), get BUSTED, or run out of time, and Bay 9 News airs the story: a satirical anchor segment built from a real security-camera still of your car rendered from the 3D scene, your before/after livery and the measured change percentage. Save the broadcast as a 1600×900 PNG, then use photo mode, a second Unlayer pass on your captured shot, and a run card. GTA-style HUD (stars, cash, radar, phone texts), three synthesized radio stations, original generated art, keyboard and touch controls. No login, backend, runtime AI service or franchise assets.
 
-## Judge route
+## Judge route (4 minutes)
 
-1. Open the garage and choose a livery.
-2. Select **Make it yours**, add text or a visible brush stroke, and use native **Save**.
-3. Inspect the fitted car. Drag the scene to look around; try another body finish.
-4. Take the delivery. Optionally select automatic throttle, then use A/D or the touch arrows to steer around the clockwise circuit.
-5. Finish or retry; the personalized car persists.
-6. Select **Keep the evidence**, capture an angle, edit the photograph in Unlayer, and download the run card.
+1. Open the garage (Nico's intro), pick a livery, choose an underglow.
+2. **Make it yours**: add text or a brush stroke, native **Save**. The car wears it.
+3. **Take the delivery** (automatic throttle optional). Drive north to the pier: WANTED.
+4. Keep moving, turn right, then right again onto the east road. Drive into the pink **Spray & Pray** marker.
+5. Repaint in Unlayer (a filter preset is the fastest big change), Save, watch the stars drop.
+6. Finish at the garage → MISSION PASSED → **You made the news** → **Save the broadcast**.
 
 ## Draft X post — not published
 
-Good paint. Bad ideas.
+Paint your car. Get five stars for it. Repaint it mid-chase to disappear.
 
-Built Sundown Customs for @unlayer’s #BuiltWithImageEditor challenge.
-
-Design a livery → drive your actual artwork around a 3D coast → photograph the evidence.
+Built Sundown Customs for @unlayer's #BuiltWithImageEditor challenge: the image editor is the Pay-and-Spray. Every 8% of paint you change drops a wanted star, and Bay 9 News airs your actual car.
 
 https://sundown-customs.vercel.app
 

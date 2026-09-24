@@ -1,11 +1,13 @@
 import type { CSSProperties } from "react";
-import { CHECKPOINTS } from "./driving";
+import { CHECKPOINTS, RESPRAY } from "./driving";
 
 export type MinimapProps = {
   x: number;
   z: number;
   heading: number;
   checkpoint: number;
+  hot?: boolean;
+  respray?: boolean;
 };
 
 const WIDTH = 145;
@@ -35,7 +37,14 @@ const labelStyle: CSSProperties = {
   letterSpacing: "0.11em",
 };
 
-export default function Minimap({ x, z, heading, checkpoint }: MinimapProps) {
+export default function Minimap({
+  x,
+  z,
+  heading,
+  checkpoint,
+  hot,
+  respray,
+}: MinimapProps) {
   const completed = Math.max(0, Math.min(CHECKPOINTS.length, checkpoint));
   const carX = mapX(x);
   const carY = mapY(z);
@@ -149,6 +158,26 @@ export default function Minimap({ x, z, heading, checkpoint }: MinimapProps) {
           </g>
         );
       })}
+      {respray && (
+        <g transform={`translate(${mapX(RESPRAY.x)} ${mapY(RESPRAY.z)})`}>
+          <circle r="8" fill="none" stroke="#ff4fb0" strokeWidth="1.2" className="radar-pulse" />
+          <circle r="5.4" fill="#ff4fb0" stroke="#ffd1ec" strokeWidth="1.2" />
+          <text y="2.4" textAnchor="middle" fill="#2a0620" fontSize="6.5" fontWeight="900" style={labelStyle}>
+            $
+          </text>
+        </g>
+      )}
+      {hot && (
+        <circle
+          cx={carX}
+          cy={carY}
+          r="15"
+          fill="none"
+          stroke="#ff3b3b"
+          strokeWidth="1.4"
+          className="radar-pulse"
+        />
+      )}
       <g
         transform={`translate(${carX} ${carY}) rotate(${(heading * 180) / Math.PI})`}
         filter="url(#minimap-glow)"

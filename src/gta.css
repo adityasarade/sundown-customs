@@ -1,0 +1,832 @@
+/* ─── Sundown Customs · GTA layer: HUD, wanted system, banners, news ─── */
+:root {
+  --gta-gold: #ffcf4a;
+  --gta-pink: #ff4fb0;
+  --gta-cyan: #52e8ff;
+  --gta-red: #ff3b4e;
+  --gta-green: #7ee07a;
+  --gta-stroke: 0 0 1px #000, 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000,
+    -1px 1px 0 #000, 0 6px 22px rgba(0, 0, 0, 0.55);
+}
+
+/* Drive HUD */
+.drive-ui.hot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  animation: cop-edge 0.9s steps(2, jump-none) infinite;
+}
+@keyframes cop-edge {
+  0% {
+    box-shadow: inset 90px 0 110px -70px rgba(255, 40, 60, 0.55),
+      inset -90px 0 110px -70px rgba(40, 110, 255, 0.2);
+  }
+  100% {
+    box-shadow: inset 90px 0 110px -70px rgba(255, 40, 60, 0.2),
+      inset -90px 0 110px -70px rgba(40, 110, 255, 0.55);
+  }
+}
+.drive-ui.shake {
+  animation: shake 0.38s;
+}
+@keyframes shake {
+  20% { transform: translate(-6px, 3px); }
+  40% { transform: translate(5px, -4px); }
+  60% { transform: translate(-3px, 2px); }
+  80% { transform: translate(2px, -1px); }
+}
+.gta-texts {
+  position: absolute;
+  top: 118px;
+  left: 4.2%;
+  display: grid;
+  gap: 8px;
+  width: min(360px, 60vw);
+  z-index: 3;
+}
+.gta-text {
+  display: flex;
+  gap: 11px;
+  align-items: start;
+  padding: 10px 13px 11px 10px;
+  background: rgba(12, 10, 22, 0.82);
+  border-left: 3px solid var(--gta-cyan);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  animation: text-in 0.45s cubic-bezier(0.2, 0.9, 0.2, 1.2) both;
+}
+@keyframes text-in {
+  from { transform: translateX(-30px); opacity: 0; }
+}
+.gta-text img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--gta-cyan);
+  flex: none;
+}
+.gta-text span {
+  font: 800 12px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.14em;
+  color: var(--gta-cyan);
+}
+.gta-text span small {
+  color: #9a93b5;
+  font-weight: 600;
+  margin-left: 6px;
+  letter-spacing: 0.05em;
+}
+.gta-text p {
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 3px;
+  color: #f4efff;
+}
+.gta-status {
+  position: absolute;
+  top: 116px;
+  right: 4.2%;
+  text-align: right;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  z-index: 3;
+}
+.stars {
+  display: flex;
+  gap: 3px;
+}
+.stars svg {
+  color: rgba(255, 255, 255, 0.28);
+  fill: rgba(0, 0, 0, 0.35);
+  filter: drop-shadow(0 2px 0 #000);
+  transition: transform 0.2s;
+}
+.stars svg.on {
+  color: #fff;
+  fill: #fff;
+  animation: star-flash 0.6s steps(2, jump-none) infinite;
+}
+@keyframes star-flash {
+  0% { color: #fff; fill: #fff; }
+  100% { color: #ff4d5e; fill: #3f8cff; }
+}
+.cash {
+  font: 900 44px/1 "Barlow Condensed", Impact, sans-serif;
+  color: var(--gta-green);
+  text-shadow: var(--gta-stroke);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.clock {
+  font: 800 34px/1 "Barlow Condensed", Impact, sans-serif;
+  color: #fff;
+  text-shadow: var(--gta-stroke);
+  font-variant-numeric: tabular-nums;
+}
+.clock.urgent {
+  color: var(--gta-red);
+  animation: pulse 0.7s infinite alternate;
+}
+@keyframes pulse {
+  to { opacity: 0.55; }
+}
+.bust-meter {
+  width: 170px;
+  height: 9px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid #000;
+  margin-top: 8px;
+  position: relative;
+}
+.bust-meter i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3f8cff, var(--gta-red));
+}
+.bust-meter small {
+  position: absolute;
+  right: 0;
+  top: 12px;
+  font: 800 11px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.2em;
+  color: var(--gta-red);
+  text-shadow: 0 1px 0 #000;
+}
+.gta-banner {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 4;
+  animation: banner 2.6s both;
+  white-space: nowrap;
+}
+@keyframes banner {
+  0% { opacity: 0; transform: translateX(-50%) scale(1.5); letter-spacing: 0.3em; }
+  12% { opacity: 1; transform: translateX(-50%) scale(1); letter-spacing: 0.02em; }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+}
+.gta-banner strong {
+  display: block;
+  font: italic 900 clamp(46px, 7vw, 96px) / 0.9 "Barlow Condensed", Impact, sans-serif;
+  color: var(--gta-gold);
+  text-shadow: var(--gta-stroke);
+  -webkit-text-stroke: 1.5px #000;
+}
+.gta-banner span {
+  display: inline-block;
+  margin-top: 10px;
+  font: 700 15px "DM Sans", sans-serif;
+  color: #fff;
+  text-shadow: 0 2px 0 #000, 0 0 14px #000;
+}
+.gta-banner.red strong { color: var(--gta-red); }
+.gta-banner.green strong { color: var(--gta-green); }
+.gta-banner.pink strong { color: var(--gta-pink); }
+.gta-banner.title strong {
+  color: #fff;
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+.gta-banner.title span { color: var(--gta-gold); letter-spacing: 0.2em; }
+.gta-subtitle {
+  position: absolute;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 600 19px "DM Sans", sans-serif;
+  color: #fff;
+  text-shadow: 0 2px 0 #000, 0 0 10px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  z-index: 3;
+}
+.gta-subtitle em {
+  font-style: normal;
+  color: var(--gta-gold);
+  font-weight: 800;
+}
+.gta-subtitle em.pink { color: var(--gta-pink); }
+.gta-subtitle em.cop { color: #6fb7ff; }
+.radar {
+  position: absolute;
+  left: 4.2%;
+  bottom: 40px;
+  z-index: 3;
+}
+.radar svg {
+  border: 3px solid #0b0b12 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 14px 40px rgba(0, 0, 0, 0.45) !important;
+  width: 176px !important;
+  height: 182px !important;
+}
+.radar-bars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin-top: 4px;
+}
+.radar-bars i {
+  display: block;
+  height: 6px;
+  background: var(--gta-green);
+  box-shadow: 0 0 0 1px #000;
+  max-width: 100%;
+  transition: width 0.15s;
+}
+.radar-bars i.heat { background: linear-gradient(90deg, #3f8cff, var(--gta-red)); }
+.radar-pulse {
+  animation: radar-pulse 1s infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes radar-pulse {
+  from { opacity: 1; transform: scale(0.6); }
+  to { opacity: 0; transform: scale(1.4); }
+}
+.drive-ui .speedometer {
+  position: absolute;
+  right: 4.2%;
+  bottom: 40px;
+  z-index: 3;
+}
+.drive-ui .speedometer strong {
+  font-weight: 800;
+  font-style: italic;
+  text-shadow: var(--gta-stroke);
+}
+.drive-ui .drift-score {
+  color: var(--gta-gold);
+  text-shadow: 0 2px 0 #000;
+}
+.station {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font: 800 12px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--gta-cyan);
+  text-shadow: 0 1px 0 #000;
+}
+.drive-ui .keyboard-hint {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  bottom: 30px;
+  opacity: 0.8;
+}
+
+/* Brief card: mission start */
+.brief-art {
+  height: 170px;
+  margin: -44px -44px 26px;
+  background: url("/art/chase.webp") center 60% / cover;
+  position: relative;
+}
+.brief-art::after {
+  content: "MISSION";
+  position: absolute;
+  left: 20px;
+  bottom: 14px;
+  font: italic 900 30px "Barlow Condensed", Impact, sans-serif;
+  color: var(--gta-gold);
+  text-shadow: var(--gta-stroke);
+  letter-spacing: 0.04em;
+}
+.brief-warning {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 13px;
+  margin: 0 0 18px;
+  background: #2a0f24;
+  color: #ffd0ea;
+  font-size: 12px;
+  line-height: 1.45;
+  border-left: 3px solid var(--gta-pink);
+}
+.brief-warning b { color: var(--gta-pink); }
+
+/* Underglow chips */
+.glow-chip {
+  box-shadow: 0 0 14px 1px currentColor;
+}
+.glow-chip.off {
+  box-shadow: none;
+  border: 1px dashed rgba(240, 234, 217, 0.5) !important;
+  position: relative;
+}
+.glow-chip.off::after {
+  content: "";
+  position: absolute;
+  inset: 45% 12%;
+  background: rgba(240, 234, 217, 0.6);
+  transform: rotate(-45deg);
+}
+
+/* Respray booth editor */
+.editor-respray {
+  background: linear-gradient(180deg, rgba(20, 8, 26, 0.9), rgba(20, 8, 26, 0.97)),
+    url("/art/respray.webp") center / cover !important;
+}
+.editor-respray .editor-intro h2 {
+  color: var(--gta-pink);
+  font-style: italic;
+}
+.editor-respray .editor-heading .eyebrow {
+  color: var(--gta-gold);
+  letter-spacing: 0.18em;
+}
+.editor-respray .tool-tips b { color: var(--gta-pink); }
+
+/* Result: GTA splash */
+.gta-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+  background: linear-gradient(180deg, #000 0 11%, transparent 11% 89%, #000 89%);
+  animation: splash-out 3.2s forwards;
+}
+.gta-splash::before {
+  content: "";
+  position: absolute;
+  inset: 11% 0;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), transparent 70%);
+  z-index: -1;
+}
+.gta-splash strong {
+  font: italic 900 clamp(58px, 10vw, 150px) / 0.9 "Barlow Condensed", Impact, sans-serif;
+  color: var(--gta-gold);
+  -webkit-text-stroke: 2px #000;
+  text-shadow: var(--gta-stroke);
+  animation: splash-in 0.7s cubic-bezier(0.2, 0.9, 0.2, 1.1) both;
+}
+.busted .gta-splash strong,
+.failed .gta-splash strong {
+  color: var(--gta-red);
+}
+.gta-splash span {
+  margin-top: 16px;
+  font: 800 22px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.24em;
+  color: #fff;
+  text-shadow: 0 2px 0 #000;
+  animation: splash-in 0.7s 0.35s both;
+}
+@keyframes splash-in {
+  from { opacity: 0; transform: scale(1.35); filter: blur(6px); }
+}
+@keyframes splash-out {
+  0%, 78% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+.result-ui .result-panel {
+  animation: panel-in 0.6s 2.7s both;
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(20px); }
+}
+.result-ui.busted .result-panel h1 em,
+.result-ui.failed .result-panel h1 em { color: var(--gta-red); }
+.result-ui .result-stats b { font-variant-numeric: tabular-nums; }
+
+/* Bay 9 News */
+.news {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  background: #1a0d2e;
+  color: #fff;
+  animation: news-on 0.5s both;
+}
+@keyframes news-on {
+  0% { filter: brightness(3) contrast(2); transform: scaleY(0.01); }
+  60% { transform: scaleY(1); }
+}
+.news-bg {
+  position: absolute;
+  inset: 0;
+  background: url("/art/anchor.webp") left center / cover;
+}
+.news-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.08) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, transparent 55%, rgba(10, 5, 20, 0.7));
+}
+.news-top {
+  position: absolute;
+  top: 4.5%;
+  left: 3.5%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  z-index: 2;
+}
+.news-logo {
+  font: 900 42px/1 "Barlow Condensed", Impact, sans-serif;
+  background: #fff;
+  color: #101022;
+  padding: 6px 0 4px 16px;
+  display: flex;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+.news-logo b {
+  background: #e3163b;
+  color: #fff;
+  padding: 0 16px;
+  margin: -6px 0 -4px 12px;
+  display: grid;
+  place-items: center;
+}
+.news-live {
+  background: #e3163b;
+  font: 800 18px "Barlow Condensed", sans-serif;
+  padding: 5px 10px;
+  letter-spacing: 0.1em;
+  animation: pulse 0.9s infinite alternate;
+}
+.news-place {
+  font: 700 14px "DM Sans", sans-serif;
+  letter-spacing: 0.14em;
+  text-shadow: 0 2px 8px #000;
+}
+.news-inset {
+  position: absolute;
+  right: 3.5%;
+  top: 12%;
+  width: min(44%, 700px);
+  z-index: 2;
+  display: grid;
+  gap: 14px;
+}
+.cctv {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border: 6px solid #0b0714;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  background: #000;
+  transform: perspective(1200px) rotateY(-4deg);
+}
+.cctv img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(0.85) contrast(1.3) brightness(0.92);
+}
+.cctv::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0 1px, transparent 1px 3px);
+  animation: cctv-roll 5s linear infinite;
+}
+@keyframes cctv-roll {
+  to { background-position: 0 60px; }
+}
+.cctv span {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  z-index: 1;
+  font: 700 14px ui-monospace, Menlo, monospace;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-shadow: 0 1px 0 #000;
+}
+.cctv span i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--gta-red);
+  animation: pulse 0.6s infinite alternate;
+}
+.paint-compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.paint-compare figure {
+  margin: 0;
+  border: 4px solid #0b0714;
+  background: #0b0714;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+.paint-compare img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  object-fit: cover;
+}
+.paint-compare figcaption {
+  font: 700 11px ui-monospace, Menlo, monospace;
+  letter-spacing: 0.1em;
+  padding: 6px 4px 3px;
+}
+.paint-compare > b {
+  font: italic 900 30px/0.9 "Barlow Condensed", Impact, sans-serif;
+  background: #ff2e88;
+  padding: 8px 12px;
+  transform: rotate(-6deg);
+  box-shadow: 0 10px 24px rgba(255, 46, 136, 0.45);
+  text-align: center;
+  animation: stamp 0.5s 0.9s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.paint-compare > b.same { background: #555; box-shadow: none; }
+@keyframes stamp {
+  from { transform: rotate(-6deg) scale(2.4); opacity: 0; }
+}
+.lower-third {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 62px;
+  z-index: 2;
+  animation: lt-in 0.6s 0.4s both;
+}
+@keyframes lt-in {
+  from { transform: translateX(-100%); }
+}
+.lt-head {
+  display: flex;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.97);
+  color: #101022;
+}
+.lt-head span {
+  background: #e3163b;
+  color: #fff;
+  font: 900 26px "Barlow Condensed", Impact, sans-serif;
+  padding: 12px 22px 10px 3.5vw;
+  display: grid;
+  place-items: center;
+  letter-spacing: 0.04em;
+}
+.lt-head h2 {
+  font: 900 clamp(22px, 2.6vw, 38px) / 1.05 "Barlow Condensed", Impact, sans-serif;
+  padding: 10px 22px;
+  letter-spacing: 0;
+}
+.lower-third p {
+  background: rgba(16, 16, 34, 0.9);
+  padding: 10px 3.5vw;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #e7e2ff;
+}
+.ticker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 30px;
+  height: 32px;
+  background: var(--gta-gold);
+  color: #101022;
+  overflow: hidden;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+}
+.ticker div {
+  display: flex;
+  white-space: nowrap;
+  animation: ticker 38s linear infinite;
+  font: 800 15px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.1em;
+}
+.ticker span { padding-right: 60px; }
+@keyframes ticker {
+  to { transform: translateX(-50%); }
+}
+.news-actions {
+  position: absolute;
+  right: 3.5%;
+  top: 4.5%;
+  z-index: 3;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.news-actions .btn {
+  width: auto;
+  padding: 0 18px;
+  min-height: 46px;
+}
+.news-actions .btn.text { color: #fff; text-shadow: 0 1px 6px #000; }
+
+@media (max-width: 1050px) {
+  .news-inset { width: 50%; top: 15%; }
+  .news-actions { top: auto; bottom: 0; right: 0; left: 0; justify-content: center; background: #101022; padding: 6px; }
+  .ticker { bottom: 58px; }
+  .lower-third { bottom: 90px; }
+}
+@media (max-width: 700px) {
+  .gta-texts { top: 76px; left: 4%; width: 64vw; }
+  .gta-text { padding: 7px 9px; gap: 8px; }
+  .gta-text img { width: 28px; height: 28px; }
+  .gta-text p { font-size: 11px; }
+  .gta-status { top: 74px; right: 4%; }
+  .stars svg { width: 17px; height: 17px; }
+  .cash { font-size: 30px; }
+  .clock { font-size: 24px; }
+  .bust-meter { width: 110px; }
+  .gta-subtitle { bottom: 176px; font-size: 13px; white-space: normal; width: 88vw; text-align: center; }
+  .radar { bottom: auto; top: 300px; left: 4%; }
+  .radar svg { width: 104px !important; height: 108px !important; }
+  .drive-ui .speedometer { bottom: 200px; right: 4%; }
+  .drive-ui .speedometer strong { font-size: 44px; }
+  .station { display: none; }
+  .gta-banner { top: 36%; white-space: normal; width: 92vw; }
+  .brief-art { margin: -27px -24px 20px; height: 130px; }
+  .news-bg { background-position: 18% center; }
+  .news-inset { left: 4%; right: 4%; width: auto; top: 76px; gap: 8px; }
+  .cctv { aspect-ratio: 16 / 9; transform: none; border-width: 4px; }
+  .news-top { top: 16px; left: 4%; }
+  .news-logo { font-size: 28px; }
+  .news-place { display: none; }
+  .paint-compare > b { font-size: 20px; }
+  .lt-head { flex-direction: column; }
+  .lt-head span { font-size: 18px; padding: 5px 4%; justify-items: start; }
+  .lt-head h2 { font-size: 20px; padding: 8px 4%; }
+  .lower-third p { font-size: 11px; padding: 8px 4%; }
+  .news-actions { flex-wrap: wrap; }
+  .news-actions .btn { min-height: 40px; padding: 0 12px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drive-ui.hot::before,
+  .stars svg.on,
+  .ticker div,
+  .cctv::after { animation: none; }
+}
+
+.editor-respray .editor-intro p,
+.editor-respray .tool-tips span,
+.editor-respray .editor-foot,
+.editor-respray .icon-text,
+.editor-respray .editor-credit {
+  color: #eadcf7 !important;
+}
+.editor-respray .editor-intro h2 {
+  text-shadow: 0 0 24px rgba(255, 79, 176, 0.55);
+}
+
+.respray-meter {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 3% 10px;
+  padding: 10px 16px;
+  background: rgba(255, 79, 176, 0.12);
+  border: 1px solid rgba(255, 79, 176, 0.45);
+  font: 800 13px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.14em;
+  color: #ffd9ee;
+}
+.respray-meter b { color: #fff; font-size: 20px; margin-left: 6px; }
+.respray-bar { flex: 1; height: 8px; background: rgba(0, 0, 0, 0.5); }
+.respray-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--gta-pink), var(--gta-gold));
+  transition: width 0.5s;
+}
+.respray-stars { display: flex; align-items: center; gap: 2px; }
+.respray-stars em { font-style: normal; font-size: 20px; color: #fff; transition: 0.4s; }
+.respray-stars em.gone { color: rgba(255, 255, 255, 0.18); transform: scale(0.7); }
+.respray-stars small { margin-left: 10px; color: var(--gta-gold); font-size: 12px; }
+@media (max-width: 700px) {
+  .respray-meter { flex-wrap: wrap; gap: 8px; font-size: 11px; }
+  .respray-bar { flex-basis: 100%; order: 3; }
+}
+.brief-card { max-height: calc(100svh - 32px); overflow-y: auto; }
+.brief-card h2 { font-size: 58px; }
+.brief-art { height: 128px; }
+.brief-card .job-facts { margin: 14px 0; padding: 12px 0; }
+
+@media (max-width: 700px) {
+  .radar { top: auto; bottom: 146px; }
+  .radar svg { width: 92px !important; height: 96px !important; }
+  .radar-bars { display: none; }
+  .drive-ui .speedometer { bottom: 142px; }
+  .gta-subtitle { bottom: 258px; }
+  .gta-banner { top: 40%; }
+}
+
+/* GTA-style character intro */
+.char-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  border: 0;
+  padding: 0;
+  background: linear-gradient(180deg, #000 0 10%, transparent 10% 90%, #000 90%);
+  cursor: pointer;
+  animation: intro-out 3.4s forwards;
+}
+.char-intro img {
+  position: absolute;
+  right: 8%;
+  bottom: 10%;
+  height: 80%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 30%);
+  mask-image: linear-gradient(90deg, transparent, #000 30%);
+  animation: intro-img 0.9s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+@keyframes intro-img {
+  from { opacity: 0; transform: translateX(80px); }
+}
+.char-name {
+  position: absolute;
+  left: 9%;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: left;
+  font: italic 900 clamp(90px, 14vw, 200px) / 0.85 "Barlow Condensed", Impact, sans-serif;
+  color: var(--gta-gold);
+  -webkit-text-stroke: 2px #000;
+  text-shadow: var(--gta-stroke);
+  animation: intro-slide 0.9s 0.25s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+.char-name small {
+  display: block;
+  margin-top: 14px;
+  font: 800 18px "Barlow Condensed", sans-serif;
+  letter-spacing: 0.3em;
+  color: #fff;
+  -webkit-text-stroke: 0;
+  font-style: normal;
+}
+@keyframes intro-slide {
+  from { opacity: 0; transform: translate(-60px, -50%); }
+}
+@keyframes intro-out {
+  0% { background-color: rgba(0, 0, 0, 0.6); }
+  82% { opacity: 1; background-color: rgba(0, 0, 0, 0.35); }
+  100% { opacity: 0; visibility: hidden; }
+}
+@media (max-width: 700px) {
+  .char-intro img { right: -10%; height: 55%; bottom: 12%; }
+  .char-name { left: 6%; top: 30%; }
+  .char-name small { font-size: 12px; }
+}
+
+.home h1 em,
+.garage-title h1 em,
+.brief-card h2 em {
+  background: linear-gradient(95deg, #ff4fb0 5%, #ff8a5c 55%, #ffc15a 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+button.station {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+button.station:hover { color: #fff; }
+.station-pop {
+  position: absolute;
+  top: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  z-index: 4;
+  pointer-events: none;
+  text-shadow: 0 2px 0 #000, 0 0 12px #000;
+  animation: banner 2.2s both;
+}
+.station-pop svg { color: var(--gta-cyan); }
+.station-pop strong {
+  font: italic 900 34px/1 "Barlow Condensed", Impact, sans-serif;
+  color: var(--gta-cyan);
+  -webkit-text-stroke: 1px #000;
+}
+.station-pop span {
+  font: 700 11px "DM Sans", sans-serif;
+  letter-spacing: 0.18em;
+  color: #fff;
+}
+@media (max-width: 700px) { .station-pop { top: 190px; } }
