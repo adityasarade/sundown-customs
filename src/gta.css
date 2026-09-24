@@ -1004,3 +1004,17 @@ button.station:hover { color: #fff; }
   .custom-panel { max-height: none; overflow: visible; }
   .garage-ui { height: var(--garage-h, 1400px); min-height: var(--garage-h, 1400px); }
 }
+
+.mission-rows { list-style: none; padding: 0; margin: 4px 0 14px; display: grid; gap: 6px; max-width: 400px; }
+.mission-rows li { display: flex; align-items: baseline; gap: 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.mission-rows i { flex: 1; border-bottom: 1px dotted rgba(240,234,217,.35); transform: translateY(-3px); }
+.mission-rows b { font: 800 16px "Barlow Condensed", sans-serif; color: var(--gta-gold); }
+.mission-rows b.hot { color: var(--gta-red); }
+.mission-rows li { animation: text-in .4s both; }
+.mission-rows li:nth-child(1) { animation-delay: 3s; } .mission-rows li:nth-child(2) { animation-delay: 3.15s; }
+.mission-rows li:nth-child(3) { animation-delay: 3.3s; } .mission-rows li:nth-child(4) { animation-delay: 3.45s; }
+@media (min-width: 701px) { .result-ui .result-panel { top: 19%; } }
+.result-ui.passed .result-panel h1 em {
+  background: linear-gradient(95deg, #ff4fb0 5%, #ff8a5c 55%, #ffc15a 95%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
+}

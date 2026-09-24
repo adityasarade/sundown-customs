@@ -1232,6 +1232,28 @@ function App() {
                 <small>RESPRAYED</small>
               </span>
             </div>
+            <ul className="mission-rows">
+              <li>
+                <span>Wanted stars dropped</span>
+                <i />
+                <b>{respray ? `${respray.cleared}★` : "0★"}</b>
+              </li>
+              <li>
+                <span>Stars still on you</span>
+                <i />
+                <b className={result.stars ? "hot" : ""}>{result.stars}★</b>
+              </li>
+              <li>
+                <span>Drift cash</span>
+                <i />
+                <b>${Math.round(result.drift * 3).toLocaleString()}</b>
+              </li>
+              <li>
+                <span>Scrapes &amp; rams</span>
+                <i />
+                <b>{result.collisions}</b>
+              </li>
+            </ul>
             <div className="best-score">
               PERSONAL BEST <b>${best.toLocaleString()}</b>
               <span>THIS BROWSER</span>
