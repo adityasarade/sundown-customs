@@ -1000,3 +1000,7 @@ button.station:hover { color: #fff; }
 .emblem-row .emblem-cycle { min-height: 34px; padding: 0 8px; }
 .hud-crew { width: 34px; height: 34px; border-radius: 50%; vertical-align: -4px; margin-right: 10px; box-shadow: 0 0 0 2px #000; }
 @media (max-width:700px){.hud-crew{width:22px;height:22px;margin-right:6px}}
+@media (max-width: 700px) {
+  .custom-panel { max-height: none; overflow: visible; }
+  .garage-ui { height: var(--garage-h, 1400px); min-height: var(--garage-h, 1400px); }
+}
