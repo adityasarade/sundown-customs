@@ -3,7 +3,14 @@
  * Each one picks its own tool set, labels (via Unlayer translations), tool
  * icons and theme, so the editor reads as a diegetic in-world device.
  */
-export type EditorKind = "wrap" | "respray" | "photo" | "emblem";
+export type EditorKind =
+  | "wrap"
+  | "respray"
+  | "photo"
+  | "emblem"
+  | "plan"
+  | "ink"
+  | "hijack";
 
 type Tool =
   | "crop"
@@ -94,6 +101,66 @@ export const CONTEXTS: Record<EditorKind, Context> = {
       "image_editor.tools.filter": "Colourway",
       "image_editor.toolbar.save": "Rep the crew",
       "image_editor.toolbar.cancel": "Back",
+    },
+  },
+  plan: {
+    theme: "dark",
+    tools: {
+      ...off,
+      draw: { enabled: true, icon: icon("marker") },
+      shapes: { enabled: true, icon: icon("stencil") },
+      text: { enabled: true, icon: icon("caption") },
+      stickers: { enabled: true, icon: icon("pin") },
+    },
+    labels: {
+      "image_editor.tools.draw": "Route marker",
+      "image_editor.tools.shapes": "Circle a crate",
+      "image_editor.tools.text": "Notes",
+      "image_editor.tools.stickers": "Pins",
+      "image_editor.toolbar.save": "Lock the plan",
+      "image_editor.toolbar.cancel": "Back",
+      "image_editor.labels.drawing": "Route",
+    },
+  },
+  ink: {
+    theme: "dark",
+    tools: {
+      ...off,
+      draw: { enabled: true, icon: icon("needle") },
+      text: { enabled: true, icon: icon("tag") },
+      stickers: { enabled: true, icon: icon("decal") },
+      shapes: { enabled: true, icon: icon("stencil") },
+      filter: { enabled: true, icon: icon("tint") },
+    },
+    labels: {
+      "image_editor.tools.draw": "Needle",
+      "image_editor.tools.text": "Script",
+      "image_editor.tools.stickers": "Flash",
+      "image_editor.tools.shapes": "Linework",
+      "image_editor.tools.filter": "Shading",
+      "image_editor.toolbar.save": "Ink it",
+      "image_editor.toolbar.cancel": "Chicken out",
+      "image_editor.labels.drawing": "Linework",
+    },
+  },
+  hijack: {
+    theme: "dark",
+    tools: {
+      ...off,
+      draw: { enabled: true, icon: icon("spray") },
+      text: { enabled: true, icon: icon("caption") },
+      stickers: { enabled: true, icon: icon("decal") },
+      shapes: { enabled: true, icon: icon("stencil") },
+      filter: { enabled: true, icon: icon("tint") },
+    },
+    labels: {
+      "image_editor.tools.draw": "Deface",
+      "image_editor.tools.text": "Your message",
+      "image_editor.tools.stickers": "Pirate stickers",
+      "image_editor.tools.shapes": "Censor bars",
+      "image_editor.tools.filter": "Signal noise",
+      "image_editor.toolbar.save": "GO LIVE",
+      "image_editor.toolbar.cancel": "Abort",
     },
   },
   photo: {
