@@ -107,6 +107,7 @@ export const CONTEXTS: Record<EditorKind, Context> = {
     theme: "dark",
     tools: {
       ...off,
+      filter: false,
       draw: { enabled: true, icon: icon("marker") },
       shapes: { enabled: true, icon: icon("stencil") },
       text: { enabled: true, icon: icon("caption") },

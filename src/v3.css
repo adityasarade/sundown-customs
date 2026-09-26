@@ -1,0 +1,65 @@
+/* v3 integration styles: parlor, mission brief, garage jobs, drive HUD extras */
+.parlor { position: fixed; inset: 0; z-index: 20; overflow-y: auto; color: #f4eee6; }
+.parlor-bg { position: fixed; inset: 0; background: linear-gradient(90deg, rgba(14,6,14,.94) 0 45%, rgba(14,6,14,.55)), url("/art/parlor.webp") center / cover; z-index: -1; }
+.parlor-head { display: flex; align-items: center; gap: 28px; padding: 26px 4.2%; }
+.parlor-head .icon-text { color: #f4eee6; }
+.parlor-sign { font: italic 900 40px/1 "Barlow Condensed", Impact, sans-serif; color: #ff6b6b; letter-spacing: .02em; text-shadow: 0 0 18px rgba(255,80,110,.7), 0 0 2px #fff; }
+.parlor-sign i { color: var(--gta-cyan); }
+.parlor-sub { font: 800 12px "Barlow Condensed", sans-serif; letter-spacing: .3em; opacity: .7; }
+.parlor-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 4vw; padding: 10px 4.2% 40px; align-items: start; }
+.parlor-stage { display: grid; gap: 16px; }
+.parlor-arm, .parlor-current { margin: 0; background: #0b0710; border: 4px solid #0b0710; box-shadow: 0 30px 70px rgba(0,0,0,.55); }
+.parlor-arm img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.parlor-current { width: 220px; }
+.parlor-current img { display: block; width: 100%; }
+.parlor-arm figcaption, .parlor-current figcaption { display: flex; gap: 8px; align-items: center; font: 800 11px "Barlow Condensed", sans-serif; letter-spacing: .16em; padding: 8px 10px 6px; color: #d8cfe3; }
+.parlor-panel { background: rgba(14,8,18,.86); border: 1px solid rgba(255,107,107,.25); padding: 26px; backdrop-filter: blur(8px); }
+.parlor-panel h2 { font-size: 64px; margin: 12px 0 14px; }
+.parlor-panel h2 em { color: #ff6b6b; font-style: italic; }
+.parlor-panel p { font-size: 14px; line-height: 1.55; color: #ddd3e8; margin-bottom: 18px; }
+.parlor-panel .btn { margin-top: 18px; }
+@media (max-width: 900px) {
+  .parlor-body { grid-template-columns: 1fr; }
+  .parlor-head { flex-wrap: wrap; gap: 10px 18px; padding: 16px 5%; }
+  .parlor-sign { font-size: 30px; }
+  .parlor-panel h2 { font-size: 46px; }
+  .parlor-current { width: 150px; }
+}
+
+/* Garage BAYPHONE */
+.garage-jobs { position: absolute; left: 4.2%; top: 400px; width: 300px; z-index: 6; }
+.jobs-reopen { position: absolute; left: 4.2%; top: 420px; z-index: 6; display: flex; align-items: center; gap: 10px; background: rgba(12,10,22,.88); border: 1px solid rgba(82,232,255,.4); color: #fff; padding: 8px 14px 8px 8px; font: 800 12px "Barlow Condensed", sans-serif; letter-spacing: .16em; }
+.jobs-reopen img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; }
+.phase-garage .garage-bottom > div { display: none; }
+@media (max-height: 820px) and (min-width: 701px) { .garage-jobs { top: 372px; transform: scale(.9); transform-origin: top left; } }
+@media (max-width: 700px) {
+  .garage-jobs, .jobs-reopen { position: absolute; left: 6%; right: 6%; width: auto; top: auto; bottom: 30px; }
+  .garage-ui { height: 1860px !important; min-height: 1860px !important; }
+}
+/* Brief: plan CTA */
+.brief-plan { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; margin: 0 0 18px; padding: 10px 14px 10px 10px; background: #141323; color: #fff; border: 2px solid var(--gta-gold); box-shadow: 0 0 0 4px rgba(255,207,74,.18); animation: plan-pulse 1.6s ease-in-out infinite; }
+.brief-plan img { width: 74px; height: 50px; object-fit: cover; }
+.brief-plan b { display: block; font: italic 900 20px "Barlow Condensed", sans-serif; color: var(--gta-gold); letter-spacing: .03em; }
+.brief-plan small { font-size: 12px; line-height: 1.4; color: #d9d3e6; }
+@keyframes plan-pulse { 50% { box-shadow: 0 0 0 8px rgba(255,207,74,.06); } }
+/* Drive extras */
+.stash-counter { position: absolute; right: 4.2%; top: 262px; z-index: 3; font: 800 14px "Barlow Condensed", sans-serif; letter-spacing: .16em; color: #fff; text-shadow: 0 2px 0 #000; }
+.stash-counter b { color: var(--gta-gold); font-size: 20px; }
+@media (max-width: 700px) { .stash-counter { top: 176px; right: 4%; font-size: 11px; } }
+/* News hijack button */
+.news-actions .hijack-btn { background: linear-gradient(95deg, #52e8ff, #ff4fb0); color: #0b0714; border: 0; font-weight: 800; animation: plan-pulse 1.4s infinite; }
+
+/* Busted mugshot */
+.mugshot { display: grid; grid-template-columns: 150px 1fr; gap: 12px; margin: 0 0 14px; padding: 10px; background: #ece8dc; color: #141323; transform: rotate(-1.2deg); box-shadow: 0 16px 40px rgba(0,0,0,.45); max-width: 400px; }
+.mugshot-photo { position: relative; }
+.mugshot-photo img { width: 100%; aspect-ratio: 4/3; object-fit: cover; filter: grayscale(1) contrast(1.2); display: block; }
+.mugshot-photo span { position: absolute; left: 0; right: 0; bottom: 0; background: #141323; color: #fff; font: 800 9px ui-monospace, Menlo, monospace; letter-spacing: .08em; padding: 3px 5px; }
+.mugshot-info { display: grid; gap: 3px; align-content: start; }
+.mugshot-info b { font: italic 900 24px "Barlow Condensed", sans-serif; }
+.mugshot-info small { font: 700 10px ui-monospace, Menlo, monospace; letter-spacing: .05em; }
+.mugshot-ink { width: 100%; max-width: 180px; margin-top: 4px; border: 2px solid #141323; }
+/* News: tattoo witness card */
+.news-ink { position: absolute; left: 3.5%; bottom: 190px; z-index: 2; margin: 0; width: 220px; background: #0b0714; border: 4px solid #0b0714; transform: rotate(-3deg); box-shadow: 0 16px 36px rgba(0,0,0,.5); animation: stamp .5s 1.2s cubic-bezier(.2,1.4,.3,1) both; }
+.news-ink img { display: block; width: 100%; }
+.news-ink figcaption { font: 700 10px ui-monospace, Menlo, monospace; letter-spacing: .06em; color: #fff; padding: 5px 4px 2px; }
+@media (max-width: 700px) { .news-ink { display: none; } }

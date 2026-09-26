@@ -1,1234 +1,1704 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import {
-  CHECKPOINTS,
-  RESPRAY,
-  RUN_SECONDS,
-  applyRespray,
-  livePayout,
-  copPose,
-  createDriveState,
-  runScore,
-  starsFor,
-  stepDrive,
-  type DriveControls,
-  type DriveEvent,
-} from "./driving";
-import { makeCar } from "./car";
+import { applyRespray, livePayout, copPose, createDriveState, runScore, starsFor, stepDrive, type DriveControls, type DriveEvent, } from "./driving";
+import { makeCar, type CarModel } from "./car";
+import { AVENUES, STREETS, ROAD_HALF_WIDTH, EDGES, NODES, START, node, landmarks, defaultMission, type Mission, type Point, type Landmark } from "./city";
+import { nextTurn, type Turn } from "./gps";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 export type WorldMode = "garage" | "drive" | "photo";
 export type Telemetry = {
-  speed: number;
-  remaining: number;
-  checkpoint: number;
-  totalCheckpoints: number;
-  drift: number;
-  boost: number;
-  heat: number;
-  stars: number;
-  bust: number;
-  cops: number;
-  payout: number;
-  respray: boolean;
-  message: string;
-  x?: number;
-  z?: number;
-  heading?: number;
+    speed: number;
+    remaining: number;
+    checkpoint: number;
+    totalCheckpoints: number;
+    drift: number;
+    boost: number;
+    heat: number;
+    stars: number;
+    bust: number;
+    cops: number;
+    payout: number;
+    respray: boolean;
+    message: string;
+    x?: number;
+    z?: number;
+    heading?: number;
+    turn?: Turn;
+    stashes?: number;
+    stashTotal?: number;
+    limit?: number;
 };
 export type RunResult = {
-  won: boolean;
-  time: number;
-  drift: number;
-  collisions: number;
-  score: number;
-  snapshot: string;
-  busted: boolean;
-  stars: number;
-  resprayed: boolean;
+    won: boolean;
+    time: number;
+    drift: number;
+    collisions: number;
+    score: number;
+    snapshot: string;
+    busted: boolean;
+    stars: number;
+    resprayed: boolean;
 };
 export type WorldApi = {
-  respray: (changed: number) => { cleared: number; remaining: number };
-  teleport?: (x: number, z: number, heading: number) => void;
+    respray: (changed: number) => {
+        cleared: number;
+        remaining: number;
+    };
+    teleport?: (x: number, z: number, heading: number) => void;
 };
 export type WorldProps = {
-  mode: WorldMode;
-  wrapUrl: string;
-  paint: string;
-  runId: number;
-  paused: boolean;
-  autoThrottle?: boolean;
-  onTelemetry: (t: Telemetry) => void;
-  onFinish: (r: RunResult) => void;
-  onReady?: () => void;
-  onError?: (message: string) => void;
-  controls: React.MutableRefObject<DriveControls>;
-  captureRef: React.MutableRefObject<(() => string) | null>;
-  apiRef?: React.MutableRefObject<WorldApi | null>;
-  onEvent?: (e: DriveEvent, shot?: string) => void;
-  underglow?: string | null;
-  emblemUrl?: string;
-  billboardUrl?: string;
+    mode: WorldMode;
+    wrapUrl: string;
+    paint: string;
+    runId: number;
+    paused: boolean;
+    autoThrottle?: boolean;
+    onTelemetry: (t: Telemetry) => void;
+    onFinish: (r: RunResult) => void;
+    onReady?: () => void;
+    onError?: (message: string) => void;
+    controls: React.MutableRefObject<DriveControls>;
+    captureRef: React.MutableRefObject<(() => string) | null>;
+    apiRef?: React.MutableRefObject<WorldApi | null>;
+    onEvent?: (e: DriveEvent, shot?: string) => void;
+    underglow?: string | null;
+    emblemUrl?: string;
+    billboardUrl?: string;
+    mission?: Mission;
+    tattooUrl?: string;
 };
 const PI = Math.PI;
-const materials = new Map<string, THREE.MeshStandardMaterial>();
+const FALLBACK_MISSION = defaultMission();
+type RenderDebugWindow = Window & {
+    __sdRender?: () => THREE.WebGLInfo["render"];
+};
 function material(color: string | number, roughness = 0.8, metalness = 0.05) {
-  const key = `${color}/${roughness}/${metalness}`;
-  if (!materials.has(key))
-    materials.set(
-      key,
-      new THREE.MeshStandardMaterial({ color, roughness, metalness }),
-    );
-  return materials.get(key)!;
+    return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
-function cube(
-  parent: THREE.Object3D,
-  w: number,
-  h: number,
-  d: number,
-  x: number,
-  y: number,
-  z: number,
-  mat: THREE.Material,
-) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  parent.add(m);
-  return m;
+function seeded(seed: number) {
+    return () => {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
-function quad(parent: THREE.Object3D, pts: number[], mat: THREE.Material) {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-  g.setAttribute(
-    "uv",
-    new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2),
-  );
-  g.setIndex([0, 1, 2, 0, 2, 3]);
-  g.computeVertexNormals();
-  const m = new THREE.Mesh(g, mat);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  parent.add(m);
-  return m;
-}
-function textTexture(
-  text: string,
-  bg = "#183d38",
-  fg = "#f0dfb5",
-  width = 512,
-  height = 128,
-) {
-  const c = document.createElement("canvas");
-  c.width = width;
-  c.height = height;
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = fg;
-  ctx.font = `800 ${height * 0.43}px "Barlow Condensed", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, width / 2, height / 2, width * 0.9);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-function sign(
-  parent: THREE.Object3D,
-  text: string,
-  w: number,
-  h: number,
-  x: number,
-  y: number,
-  z: number,
-  rotation = 0,
-  bg = "#1b1030",
-  fg = "#ff7ac8",
-) {
-  const mat = new THREE.MeshBasicMaterial({
-    map: textTexture(text, bg, fg),
-    side: THREE.DoubleSide,
-  });
-  mat.color.setScalar(1.9);
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-  m.position.set(x, y, z);
-  m.rotation.y = rotation;
-  parent.add(m);
-  return m;
-}
-function palm(parent: THREE.Object3D, x: number, z: number, size = 1) {
-  const g = new THREE.Group();
-  parent.add(g);
-  g.position.set(x, 0, z);
-  g.scale.setScalar(size);
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.14, 0.3, 7, 7),
-    material("#907552"),
-  );
-  trunk.position.y = 3.5;
-  trunk.rotation.z = 0.09;
-  trunk.castShadow = true;
-  g.add(trunk);
-  for (let i = 0; i < 9; i++) {
-    const a = (i * PI * 2) / 9;
-    const pts = [];
-    const segments = 5;
-    for (let j = 0; j <= segments; j++) {
-      const t = j / segments;
-      const r = t * 3.6;
-      const y = 7.15 + Math.sin(t * PI) * 0.85 - t * t * 0.8;
-      const width = Math.sin(t * PI) * 0.6;
-      pts.push(
-        Math.cos(a) * r + Math.sin(a) * width,
-        y,
-        Math.sin(a) * r - Math.cos(a) * width,
-        Math.cos(a) * r - Math.sin(a) * width,
-        y,
-        Math.sin(a) * r + Math.cos(a) * width,
-      );
+/** Every bucket has exactly position, normal, uv (and optionally color). */
+class Batch {
+    private buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    add(source: THREE.BufferGeometry, mat: THREE.Material, matrix = new THREE.Matrix4()) {
+        const geo = source.index ? source.toNonIndexed() : source.clone();
+        source.dispose();
+        geo.clearGroups();
+        for (const key of Object.keys(geo.attributes))
+            if (!["position", "normal", "uv", "color"].includes(key))
+                geo.deleteAttribute(key);
+        if (!geo.getAttribute("normal"))
+            geo.computeVertexNormals();
+        const count = geo.getAttribute("position").count;
+        if (!geo.getAttribute("uv"))
+            geo.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(count * 2), 2));
+        if (mat.vertexColors) {
+            if (!geo.getAttribute("color"))
+                geo.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(count * 3).fill(1), 3));
+        }
+        else
+            geo.deleteAttribute("color");
+        geo.applyMatrix4(matrix);
+        const bucket = this.buckets.get(mat) ?? [];
+        bucket.push(geo);
+        this.buckets.set(mat, bucket);
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-    const indices = [];
-    for (let j = 0; j < segments; j++) {
-      const n = j * 2;
-      indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2);
+    box(w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material) {
+        this.add(new THREE.BoxGeometry(w, h, d), mat, new THREE.Matrix4().makeTranslation(x, y, z));
     }
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    const leaf = new THREE.Mesh(
-      geo,
-      new THREE.MeshStandardMaterial({
-        color: i % 2 ? "#39725c" : "#53816b",
+    flush(parent: THREE.Object3D) {
+        for (const [mat, geometries] of this.buckets) {
+            const merged = mergeGeometries(geometries, false);
+            geometries.forEach((geo) => geo.dispose());
+            if (!merged)
+                throw new Error("Incompatible world geometry attributes");
+            merged.computeBoundingSphere();
+            const mesh = new THREE.Mesh(merged, mat);
+            mesh.castShadow = !mat.transparent && !(mat instanceof THREE.MeshBasicMaterial);
+            mesh.receiveShadow = true;
+            parent.add(mesh);
+        }
+        this.buckets.clear();
+    }
+}
+/** Dispose a whole ownership tree, including canvas maps and shader textures. */
+function disposeTree(root: THREE.Object3D) {
+    const geometries = new Set<THREE.BufferGeometry>();
+    const mats = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    root.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh || obj instanceof THREE.Points))
+            return;
+        geometries.add(obj.geometry);
+        for (const mat of Array.isArray(obj.material) ? obj.material : [obj.material]) {
+            mats.add(mat);
+            Object.values(mat).forEach((v: unknown) => { if (v instanceof THREE.Texture)
+                textures.add(v); });
+            if (mat instanceof THREE.ShaderMaterial)
+                Object.values(mat.uniforms).forEach((u) => { if (u.value instanceof THREE.Texture)
+                    textures.add(u.value); });
+        }
+        if (obj instanceof THREE.InstancedMesh)
+            obj.dispose();
+    });
+    textures.forEach((v) => v.dispose());
+    geometries.forEach((v) => v.dispose());
+    mats.forEach((v) => v.dispose());
+}
+/** Collapse a static subtree after all local transforms have been applied. */
+function mergeStatic(root: THREE.Group) {
+    root.updateMatrixWorld(true);
+    const inverse = root.matrixWorld.clone().invert();
+    const batch = new Batch();
+    root.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && !Array.isArray(obj.material))
+            batch.add(obj.geometry.clone(), obj.material, inverse.clone().multiply(obj.matrixWorld));
+    });
+    const old = new Set<THREE.BufferGeometry>();
+    root.traverse((obj) => { if (obj instanceof THREE.Mesh)
+        old.add(obj.geometry); });
+    old.forEach((geo) => geo.dispose());
+    root.clear();
+    batch.flush(root);
+}
+function cube(parent: THREE.Object3D, w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    parent.add(m);
+    return m;
+}
+/**
+ * World mounts at app start, usually before the display font has arrived, so
+ * canvas-drawn signs would bake in the fallback face. Paint now, then repaint
+ * once "Barlow Condensed" is ready.
+ */
+function paintWithDisplayFont(texture: THREE.Texture, paint: () => void) {
+    paint();
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    if (!fonts)
+        return;
+    const faces = ['900 40px "Barlow Condensed"', '800 40px "Barlow Condensed"'];
+    if (fonts.status !== "loading" && faces.every((f) => fonts.check(f)))
+        return;
+    fonts.ready
+        .then(() => Promise.all(faces.map((f) => fonts.load(f))))
+        .then(() => {
+            paint();
+            texture.needsUpdate = true;
+        })
+        .catch(() => { });
+}
+function textTexture(text: string, bg = "#183d38", fg = "#f0dfb5", width = 512, height = 128) {
+    const c = document.createElement("canvas");
+    c.width = width;
+    c.height = height;
+    const ctx = c.getContext("2d")!;
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    paintWithDisplayFont(t, () => {
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = fg;
+        ctx.font = `italic 900 ${height * 0.43}px "Barlow Condensed", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, width / 2, height / 2, width * 0.9);
+    });
+    return t;
+}
+function sign(parent: THREE.Object3D, text: string, w: number, h: number, x: number, y: number, z: number, rotation = 0, bg = "#1b1030", fg = "#ff7ac8") {
+    const mat = new THREE.MeshBasicMaterial({
+        map: textTexture(text, bg, fg),
         side: THREE.DoubleSide,
-        roughness: 1,
-      }),
-    );
-    leaf.castShadow = true;
-    g.add(leaf);
-  }
+    });
+    mat.color.setScalar(1.9);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    m.position.set(x, y, z);
+    m.rotation.y = rotation;
+    parent.add(m);
+    return m;
 }
-const windowMats: THREE.MeshStandardMaterial[] = [];
-function windowMat(n: number) {
-  if (!windowMats.length)
-    ["#ffcf85", "#2d2f4f", "#ff8fc8", "#2d2f4f", "#8ff0ff"].forEach((c, i) =>
-      windowMats.push(
-        new THREE.MeshStandardMaterial({
-          color: i % 2 ? c : "#3a3350",
-          emissive: i % 2 ? "#000000" : c,
-          emissiveIntensity: i % 2 ? 0 : 1.35,
-          roughness: 0.25,
-          metalness: 0.3,
-        }),
-      ),
-    );
-  return windowMats[Math.abs(Math.round(n)) % 5];
+function buildTextures() {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 512;
+    const ctx = canvas.getContext("2d")!;
+    const random = seeded(8701);
+    ctx.fillStyle = "#bcbcbc";
+    ctx.fillRect(0, 0, 512, 512);
+    for (let row = 0; row < 8; row++)
+        for (let col = 0; col < 8; col++) {
+            const x = col * 64, y = row * 64;
+            ctx.fillStyle = "#555165";
+            ctx.fillRect(x + 15, y + 10, 34, 46);
+            ctx.fillStyle = random() < 0.64 ? "#172336" : ["#ffcc81", "#ff81bc", "#83e4ef"][Math.floor(random() * 3)];
+            ctx.fillRect(x + 18, y + 13, 28, 38);
+            ctx.fillStyle = "#655f72";
+            ctx.fillRect(x + 31, y + 13, 2, 38);
+            ctx.fillRect(x + 18, y + 32, 28, 2);
+        }
+    const facade = new THREE.CanvasTexture(canvas);
+    facade.colorSpace = THREE.SRGBColorSpace;
+    facade.wrapS = facade.wrapT = THREE.RepeatWrapping;
+    facade.anisotropy = 4;
+    return { facade };
 }
-function building(
-  parent: THREE.Object3D,
-  x: number,
-  z: number,
-  w: number,
-  d: number,
-  h: number,
-  color: string,
-  name?: string,
-) {
-  const g = new THREE.Group();
-  g.position.set(x, 0, z);
-  parent.add(g);
-  const wall = material(color),
-    trim = material("#e0c7a0");
-  cube(g, w, h, d, 0, h / 2, 0, wall);
-  cube(g, w + 0.45, 0.35, d + 0.45, 0, h, 0, trim);
-  cube(g, w + 0.5, 0.15, d + 0.5, 0, 1.2, 0, trim);
-  cube(g, w * 0.8, 0.55, d * 0.8, 0, h + 0.4, 0, material("#b7a887"));
-  for (let floor = 0; floor < Math.min(5, Math.floor((h - 1) / 2.7)); floor++) {
-    const y = 2.6 + floor * 2.6;
-    for (let i = 0; i < Math.floor(w / 3); i++) {
-      const xx = -w / 2 + 1.8 + i * 3;
-      cube(
-        g,
-        1.15,
-        1.38,
-        0.08,
-        xx,
-        y,
-        d / 2 + 0.045,
-        windowMat(x * 7 + z * 3 + floor * 5 + i * 11),
-      );
-      cube(g, 1.27, 0.08, 0.2, xx, y - 0.7, d / 2 + 0.06, trim);
+function palm(batch: Batch, x: number, z: number, size: number, angle: number, trunk: THREE.Material, frond: THREE.Material) {
+    const transform = new THREE.Matrix4().compose(new THREE.Vector3(x, 0.2, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, angle, 0)), new THREE.Vector3(size, size, size));
+    const stem = new THREE.CylinderGeometry(0.14, 0.3, 7, 7);
+    stem.rotateZ(0.09);
+    stem.translate(-0.3, 3.5, 0);
+    batch.add(stem, trunk, transform);
+    for (let i = 0; i < 9; i++) {
+        const a = i * PI * 2 / 9;
+        const pts: number[] = [], uvs: number[] = [], indices: number[] = [];
+        for (let j = 0; j <= 5; j++) {
+            const t = j / 5, r = t * 3.6;
+            const y = 7.15 + Math.sin(t * PI) * 0.85 - t * t * 0.8;
+            const width = Math.sin(t * PI) * 0.6;
+            pts.push(-0.6 + Math.cos(a) * r + Math.sin(a) * width, y, Math.sin(a) * r - Math.cos(a) * width, -0.6 + Math.cos(a) * r - Math.sin(a) * width, y, Math.sin(a) * r + Math.cos(a) * width);
+            uvs.push(0, t, 1, t);
+            if (j < 5) {
+                const n = j * 2;
+                indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2);
+            }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        batch.add(geo, frond, transform);
     }
-    for (let i = 0; i < Math.floor(d / 3); i++) {
-      const zz = -d / 2 + 1.8 + i * 3;
-      cube(
-        g,
-        0.08,
-        1.38,
-        1.15,
-        -w / 2 - 0.045,
-        y,
-        zz,
-        windowMat(x * 3 + z + floor * 7 + i * 5),
-      );
-      cube(g, 0.22, 0.08, 1.3, -w / 2 - 0.06, y - 0.7, zz, trim);
-    }
-  }
-  if (name) {
-    sign(g, name, w * 0.88, 1.1, 0, 3.2, d / 2 + 0.12);
-    cube(g, w + 0.1, 0.16, 2.2, 0, 2.25, d / 2 + 0.7, material("#e68c6d"));
-    for (let i = 0; i < 6; i++)
-      cube(
-        g,
-        (w + 0.1) / 12,
-        0.18,
-        2.2,
-        -w / 2 + ((i * 2 + 0.5) * w) / 12,
-        2.28,
-        d / 2 + 0.7,
-        trim,
-      );
-  }
 }
 function buildCity(scene: THREE.Scene) {
-  const city = new THREE.Group();
-  scene.add(city);
-  const sand = material("#c79c86");
-  cube(city, 700, 0.2, 700, 70, -0.37, -30, sand);
-  const asphalt = material("#353544", 0.92);
-  const curb = material("#cebea0");
-  const concrete = material("#afa58c");
-  for (const x of [0, 140]) {
-    cube(city, 32, 0.2, 182, x, -0.08, -25, concrete);
-    cube(city, 26, 0.12, 176, x, 0.02, -25, asphalt);
-    for (const edge of [-13.3, 13.3])
-      cube(city, 0.55, 0.19, 177, x + edge, 0.13, -25, curb);
-    for (let z = -90; z < 45; z += 9)
-      cube(city, 0.14, 0.012, 4.4, x, 0.09, z, material("#eacb83"));
-  }
-  for (const z of [-100, 50]) {
-    cube(city, 166, 0.2, 32, 70, -0.08, z, concrete);
-    cube(city, 166, 0.12, 26, 70, 0.025, z, asphalt);
-    for (const edge of [-13.3, 13.3])
-      cube(city, 167, 0.19, 0.55, 70, 0.13, z + edge, curb);
-    for (let x = 15; x < 137; x += 9)
-      cube(city, 4.4, 0.012, 0.14, x, 0.1, z, material("#eacb83"));
-  }
-  const water = new THREE.Mesh(
-    new THREE.PlaneGeometry(500, 700, 1, 1),
-    new THREE.MeshStandardMaterial({
-      color: "#4e6f9a",
-      roughness: 0.18,
-      metalness: 0.45,
-    }),
-  );
-  water.rotation.x = -PI / 2;
-  water.position.set(-295, -0.24, -50);
-  city.add(water);
-  for (let i = 0; i < 38; i++)
-    cube(
-      city,
-      12 + (i % 5) * 4,
-      0.01,
-      0.2,
-      -48 - ((i * 37) % 195),
-      -0.22,
-      -210 + i * 13,
-      material("#93b4a5", 0.4),
-    );
-  // Marina promenade, mooring posts, tiny boats and a distant coastal skyline.
-  cube(city, 7, 0.45, 230, -20, 0.05, -20, material("#b9a88b"));
-  for (let i = 0; i < 28; i++) {
-    cube(city, 0.12, 1, 0.12, -23, 0.8, 92 - i * 8, material("#465856"));
-    if (i < 27)
-      cube(city, 0.09, 0.1, 8, -23, 1.12, 88 - i * 8, material("#465856"));
-  }
-  for (let i = 0; i < 6; i++) {
-    cube(city, 22, 0.24, 2.7, -36, 0.06, 20 - i * 24, material("#998a70"));
-    const boat = new THREE.Mesh(
-      new THREE.CapsuleGeometry(1.4, 5, 3, 6),
-      material(i % 2 ? "#e5d5af" : "#e68a69"),
-    );
-    boat.rotation.x = PI / 2;
-    boat.position.set(-39, -0.1, 15 - i * 24);
-    city.add(boat);
-    cube(city, 1.8, 0.8, 2.9, -39, 0.55, 15 - i * 24, material("#f6e5c2"));
-    cube(city, 0.06, 7, 0.06, -39, 3.8, 15 - i * 24, material("#c4c5af"));
-  }
-  const palette = ["#eaa3b8", "#8fd3c2", "#f3b690", "#b7a1dc", "#f0dcb4"];
-  for (let row = 0; row < 3; row++)
-    for (let col = 0; col < 4; col++) {
-      const x = 31 + col * 26,
-        z = -71 + row * 38;
-      building(
-        city,
-        x,
-        z,
-        15 + (col % 2) * 3,
-        20,
-        6 + ((row * 7 + col * 3) % 4) * 3.1,
-        palette[(row + col) % 5],
-        row === 2
-          ? ["PALM MOTEL", "NO REFUNDS", "BAY RECORDS", "NICE TRY"][col]
-          : undefined,
-      );
+    const city = new THREE.Group();
+    city.name = "Solana Bay / static material batches";
+    scene.add(city);
+    const batch = new Batch(), random = seeded(1987);
+    const sand = material("#c79c86"), asphalt = material("#353544", 0.92);
+    const curb = material("#d7c3ad"), concrete = material("#afa598"), grass = material("#718978");
+    const yellow = material("#eacb83"), white = material("#f4dec2"), roof = material("#9a8b98");
+    const metal = material("#465856"), wood = material("#998a70");
+    batch.box(360, 0.2, 460, 150, -0.2, -60, sand);
+    const water = material("#3d4f86", 0.15, 0.5);
+    batch.box(1100, 0.12, 1250, -575, -0.28, -70, water);
+    const h = ROAD_HALF_WIDTH;
+    // Streets own the intersections; avenue pieces stop at them (no coplanar overlap).
+    for (const z of STREETS)
+        batch.box(210 + 2 * h, 0.12, 2 * h, 105, 0.02, z, asphalt);
+    for (const x of AVENUES)
+        for (let r = 0; r < 3; r++) {
+            const length = STREETS[r + 1] - STREETS[r] - 2 * h;
+            batch.box(2 * h, 0.12, length, x, 0.02, (STREETS[r] + STREETS[r + 1]) / 2, asphalt);
+        }
+    for (const edge of EDGES) {
+        const a = node(edge.a), b = node(edge.b), alongX = a.z === b.z;
+        for (let d = h + 5; d < edge.length - h - 2; d += 9) {
+            batch.box(alongX ? 4.4 : 0.16, 0.01, alongX ? 0.16 : 4.4, a.x + (alongX ? d : 0), 0.09, a.z + (alongX ? 0 : d), yellow);
+        }
     }
-  for (let i = 0; i < 8; i++)
-    building(
-      city,
-      175 + (i % 2) * 21,
-      -90 + i * 22,
-      13,
-      14,
-      8 + (i % 3) * 8,
-      palette[i % 5],
-      i === 5 ? "LATE CHECKOUT" : undefined,
-    );
-  for (let i = 0; i < 8; i++)
-    building(
-      city,
-      22 + i * 23,
-      -135,
-      14,
-      12,
-      12 + ((i * 3) % 21),
-      palette[(i + 1) % 5],
-    );
-  for (let i = 0; i < 10; i++) {
-    palm(city, -17, 50 - i * 17, 1 + (i % 3) * 0.15);
-    palm(city, 157, 48 - i * 17, 0.9 + (i % 2) * 0.2);
-  }
-  for (let i = 0; i < 8; i++) {
-    palm(city, 17 + i * 17, -117, 1.1);
-    palm(city, 20 + i * 17, 68, 1.2);
-  }
-  // The shop: a sun-worn service bay, canopy and custom circular display pad.
-  building(city, 30, 81, 24, 16, 5.5, "#7b9b8d");
-  sign(
-    city,
-    "SUNDOWN CUSTOMS",
-    20,
-    1.7,
-    30,
-    5.3,
-    72.85,
-    PI,
-    "#143b34",
-    "#f0d9a2",
-  );
-  cube(city, 25, 0.3, 7, 30, 4.4, 69, material("#e8b574"));
-  for (const x of [19, 41])
-    cube(city, 0.18, 4.1, 0.18, x, 2.1, 67, material("#d0b799"));
-  const pad = new THREE.Mesh(
-    new THREE.CylinderGeometry(7, 7, 0.12, 64),
-    material("#bdb199"),
-  );
-  pad.position.set(0, 0.13, 40);
-  city.add(pad);
-  const line = new THREE.Mesh(
-    new THREE.TorusGeometry(6.7, 0.035, 4, 80),
-    material("#f7d5a0"),
-  );
-  line.rotation.x = PI / 2;
-  line.position.set(0, 0.205, 40);
-  city.add(line);
-  for (let i = 0; i < 12; i++) {
-    const x = i % 2 === 0 ? -15.3 : 155.3,
-      z = 40 - Math.floor(i / 2) * 27;
-    cube(city, 0.13, 6, 0.13, x, 3, z, material("#3f5650"));
-    const arm = cube(
-      city,
-      2.5,
-      0.13,
-      0.13,
-      x + (i % 2 === 0 ? 1 : -1),
-      6,
-      z,
-      material("#3f5650"),
-    );
-    void arm;
-    cube(
-      city,
-      1,
-      0.08,
-      0.45,
-      x + (i % 2 === 0 ? 2 : -2),
-      5.9,
-      z,
-      new THREE.MeshStandardMaterial({
-        color: "#ffeab4",
-        emissive: "#ffbe6b",
-        emissiveIntensity: 0.7,
-      }),
-    );
-  }
-  // Branded trackside panels and road chevrons make the corners readable at speed.
-  const corners = [
-    { x: 0, z: -98, a: 0 },
-    { x: 138, z: -100, a: -PI / 2 },
-    { x: 140, z: 48, a: PI },
-    { x: 2, z: 50, a: PI / 2 },
-  ];
-  for (const c of corners) {
-    const p = new THREE.Group();
-    p.position.set(c.x, 0, c.z);
-    p.rotation.y = c.a;
-    city.add(p);
-    sign(p, "› › ›", 9, 2, 0, 2.7, -12, 0, "#16443c", "#ffbf72");
-    cube(p, 0.15, 2, 0.15, -3, 1, -12, material("#5e6554"));
-    cube(p, 0.15, 2, 0.15, 3, 1, -12, material("#5e6554"));
-  }
-  // Spray & Pray: the roadside respray booth that shakes off the heat.
-  const booth = new THREE.Group();
-  booth.position.set(RESPRAY.x + 24, 0, RESPRAY.z);
-  city.add(booth);
-  const boothWall = material("#2b2436", 0.9);
-  cube(booth, 10, 7, 18, 0, 3.5, 0, boothWall);
-  cube(booth, 0.3, 5.2, 12, -5.1, 2.6, 0, material("#0c0a12", 1));
-  cube(booth, 11.5, 0.5, 19.5, 0, 7.2, 0, material("#ff3d9a", 0.4));
-  const neon = sign(booth, "SPRAY & PRAY", 16, 2.6, -5.3, 9.6, 0, -PI / 2, "#1a0f24", "#ff5fb8");
-  void neon;
-  sign(booth, "NEW PAINT · NO QUESTIONS", 12, 1.2, -5.25, 6.1, 0, -PI / 2, "#1a0f24", "#6ff3ff");
-  const markerMat = new THREE.MeshBasicMaterial({
-    color: "#ff4fb0",
-    transparent: true,
-    opacity: 0.32,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-  });
-  const marker = new THREE.Group();
-  marker.position.set(RESPRAY.x, 0, RESPRAY.z);
-  city.add(marker);
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(RESPRAY.radius * 0.72, RESPRAY.radius * 0.72, 5, 40, 1, true),
-    markerMat,
-  );
-  beam.position.y = 2.5;
-  marker.add(beam);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(RESPRAY.radius * 0.62, RESPRAY.radius * 0.74, 48),
-    new THREE.MeshBasicMaterial({ color: "#ff79c6", transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
-  );
-  ring.rotation.x = -PI / 2;
-  ring.position.y = 0.12;
-  marker.add(ring);
-  const floorSign = sign(marker, "RESPRAY", 9, 2.2, 0, 0.14, 0, 0, "#2a0f2a", "#ff9ad5");
-  floorSign.rotation.set(-PI / 2, 0, PI);
-  return { city, water, pad, line, marker, beam };
+    for (const n of NODES) {
+        for (const side of [-1, 1]) {
+            for (let stripe = -9; stripe <= 9; stripe += 3) {
+                batch.box(1.6, 0.01, 3.1, n.x + stripe, 0.09, n.z + side * 10, white);
+                batch.box(3.1, 0.01, 1.6, n.x + side * 10, 0.09, n.z + stripe, white);
+            }
+            batch.box(9.5, 0.01, 0.4, n.x + side * 6, 0.09, n.z + side * 13, white);
+            batch.box(0.4, 0.01, 9.5, n.x + side * 13, 0.09, n.z - side * 6, white);
+        }
+    }
+    // A continuous waterfront, with individual piers and mooring rails merged together.
+    batch.box(8, 0.45, 290, -20, 0, -55, concrete);
+    for (let z = -200; z <= 90; z += 8) {
+        batch.box(0.16, 1.1, 0.16, -23.5, 0.8, z, metal);
+        if (z < 88)
+            batch.box(0.1, 0.1, 8, -23.5, 1.25, z + 4, metal);
+    }
+    for (let i = 0; i < 10; i++) {
+        const z = 72 - i * 28;
+        batch.box(25, 0.3, 2.7, -36.5, 0.02, z, wood);
+        for (const x of [-27, -47])
+            batch.box(0.35, 1.8, 0.35, x, 0.25, z, wood);
+        const hull = new THREE.CapsuleGeometry(1.4, 5, 3, 6);
+        hull.rotateX(PI / 2);
+        hull.translate(-40, -0.1, z - 5);
+        batch.add(hull, i % 2 ? white : yellow);
+        batch.box(1.8, 0.8, 2.9, -40, 0.55, z - 5, white);
+        batch.box(0.06, 7, 0.06, -40, 3.8, z - 5, metal);
+    }
+    for (let i = 0; i < 48; i++)
+        batch.box(12 + random() * 15, 0.01, 0.16, -50 - random() * 250, -0.208, -240 + random() * 390, metal);
+    const { facade } = buildTextures();
+    const walls = new THREE.MeshStandardMaterial({ map: facade, emissiveMap: facade, emissive: "#ffffff", emissiveIntensity: 1.65, vertexColors: true, roughness: 0.68, metalness: 0.12 });
+    // Suppress neutral stucco in the shared emissive atlas; only colored windows glow.
+    walls.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace("#include <emissivemap_fragment>", `
+      #include <emissivemap_fragment>
+      vec3 windowTexel = texture2D(emissiveMap, vEmissiveMapUv).rgb;
+      float chroma = max(max(windowTexel.r, windowTexel.g), windowTexel.b) - min(min(windowTexel.r, windowTexel.g), windowTexel.b);
+      totalEmissiveRadiance *= smoothstep(0.13, 0.3, chroma);
+    `);
+    };
+    const pink = new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff4fb0").multiplyScalar(2) });
+    const cyan = new THREE.MeshBasicMaterial({ color: new THREE.Color("#52e8ff").multiplyScalar(2) });
+    const neon = [pink, cyan];
+    const palette = ["#eaa3b8", "#8fd3c2", "#f3b690", "#b7a1dc", "#f0dcb4", "#9fc4e8", "#e9b3d8"];
+    const names = ["PALM MOTEL", "NO REFUNDS", "BAY RECORDS", "NICE TRY", "LATE CHECKOUT", "VICE & RICE", "CASH 4 GOLD-ISH", "SUNSET LIQUOR", "HOT WINGS HOT TAKES", "OCEAN VUE", "LUCKY 7 PAWN", "TAN LINES"];
+    let buildingId = 0, signId = 0;
+    function building(x: number, z: number, w: number, d: number, height: number, color: string, named = false) {
+        const geo = new THREE.BoxGeometry(w, height, d);
+        const uv = geo.getAttribute("uv"), pos = geo.getAttribute("position"), norm = geo.getAttribute("normal");
+        // Eight atlas cells per repeat: every window occupies 3.2 by 2.9 world meters.
+        for (let i = 0; i < uv.count; i++) {
+            const width = Math.abs(norm.getX(i)) > 0.5 ? d : w;
+            uv.setXY(i, uv.getX(i) * width / (3.2 * 8), uv.getY(i) * height / (2.9 * 8));
+        }
+        const rgb = new THREE.Color(color), colors = new Float32Array(pos.count * 3);
+        for (let i = 0; i < pos.count; i++)
+            rgb.toArray(colors, i * 3);
+        geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        geo.translate(x, height / 2 + 0.2, z);
+        batch.add(geo, walls);
+        batch.box(w + 0.4, 0.35, d + 0.4, x, height + 0.25, z, roof);
+        for (const side of [-1, 1]) {
+            batch.box(w, 0.55, 0.22, x, height + 0.65, z + side * d / 2, roof);
+            batch.box(0.22, 0.55, d, x + side * w / 2, height + 0.65, z, roof);
+        }
+        batch.box(2.3, 0.9, 1.5, x + 1, height + 0.9, z, metal);
+        if (buildingId % 4 === 0) {
+            const tank = new THREE.CylinderGeometry(1.2, 1.2, 2.1, 10);
+            tank.translate(x - 2, height + 1.5, z - 2);
+            batch.add(tank, wood);
+        }
+        if (buildingId % 3 === 0) {
+            for (const side of [-1, 1])
+                batch.box(w + 0.5, 0.1, 0.1, x, height + 0.45, z + side * (d / 2 + 0.22), neon[buildingId % 2]);
+        }
+        if (named && signId < names.length) {
+            sign(city, names[signId], w * 0.95, 1.4, x, height + 1.55, z + d / 2 + 0.3, 0, "#1b1030", ["#ff4fb0", "#52e8ff", "#ffcf4a"][signId % 3]);
+            signId++;
+        }
+        buildingId++;
+    }
+    const blocks: {
+        x: number;
+        z: number;
+        inner: boolean;
+    }[] = [];
+    for (let row = 0; row < 3; row++)
+        for (let col = 0; col < 3; col++)
+            blocks.push({ x: 35 + col * 70, z: -137.5 + row * 75, inner: true });
+    for (const x of [252, 292])
+        for (const z of [-230, -137.5, -62.5, 12.5, 115])
+            blocks.push({ x, z, inner: false });
+    for (const x of [35, 105, 175]) {
+        blocks.push({ x, z: -228, inner: false });
+        blocks.push({ x, z: x === 35 ? 128 : 108, inner: false });
+    }
+    for (const block of blocks) {
+        const { x, z, inner } = block;
+        if (inner) {
+            batch.box(44, 0.28, 44, x, 0.04, z, concrete);
+            batch.box(35, 0.06, 35, x, 0.21, z, grass);
+            for (const side of [-1, 1]) {
+                batch.box(44, 0.18, 0.5, x, 0.18, z + side * 22, curb);
+                batch.box(0.5, 0.18, 44, x + side * 22, 0.18, z, curb);
+            }
+        }
+        const count = inner ? 4 : 2 + Math.floor(random() * 3);
+        for (let i = 0; i < count; i++) {
+            const bx = x + (i % 2 ? 9 : -9), bz = z + (i < 2 ? -10 : 10);
+            const w = 10 + random() * 6, d = 10 + random() * 6;
+            // Reserve footprints around camera furniture and the larger respray structures.
+            const boothOverlap = landmarks("respray").some((l) => {
+                const avenue = AVENUES.some((a) => a === l.x);
+                const cx = l.x + (avenue ? 20 : 0), cz = l.z - (avenue ? 0 : 20);
+                return Math.abs(bx - cx) < w / 2 + (avenue ? 7 : 10) && Math.abs(bz - cz) < d / 2 + (avenue ? 11 : 7);
+            });
+            const billboardOverlap = landmarks("camera").filter((l) => ["cam-market", "cam-bridge", "cam-pier"].includes(l.id)).some((l) => {
+                const avenue = AVENUES.some((a) => a === l.x);
+                const cx = l.x + (avenue ? 23 : 0), cz = l.z - (avenue ? 0 : 23);
+                return Math.abs(bx - cx) < w / 2 + (avenue ? 5.5 : 9) && Math.abs(bz - cz) < d / 2 + (avenue ? 9 : 5.5);
+            });
+            // The garage camera orbits the display pad (22 m radius on phones).
+            const orbitOverlap = Math.hypot(Math.max(0, Math.abs(bx - START.x) - w / 2), Math.max(0, Math.abs(bz - START.z) - d / 2)) < 26;
+            if (boothOverlap || billboardOverlap || orbitOverlap)
+                continue;
+            const downtown = bx > 125 && bz < -95;
+            const height = bx < 60 ? 6 + random() * 9 : downtown ? 24 + random() * 18 : 9 + random() * 20;
+            building(bx, bz, w, d, height, downtown && i % 3 === 0 ? "#526880" : palette[Math.floor(random() * palette.length)], i === 0);
+        }
+    }
+    // The original shop and north-facing canopy remain clear of the south road.
+    building(30, 81, 24, 16, 5.5, "#7b9b8d");
+    sign(city, "SUNDOWN CUSTOMS", 20, 1.7, 30, 5.3, 72.85, PI, "#143b34", "#f0d9a2");
+    batch.box(25, 0.3, 7, 30, 4.4, 69, yellow);
+    for (const x of [19, 41])
+        batch.box(0.18, 4.1, 0.18, x, 2.1, 67, curb);
+    const trunk = material("#907552");
+    const frond = new THREE.MeshStandardMaterial({ color: "#447862", side: THREE.DoubleSide, roughness: 1 });
+    for (const x of [-17, 17])
+        for (let z = -191; z <= 80; z += 14) {
+            const size = 0.85 + random() * 0.45, angle = random() * PI * 2;
+            // Keep the garage orbit clear: the mobile camera circles the pad at a
+            // 22 m radius, 7.5 m up, right through these canopies.
+            if (Math.hypot(x - START.x, z - START.z) < 30)
+                continue;
+            palm(batch, x, z, size, angle, trunk, frond);
+        }
+    for (const z of [34, 66])
+        for (let x = 32; x <= 224; x += 16) {
+            if (z === 66 && x < 55)
+                continue;
+            palm(batch, x, z, 0.9 + random() * 0.4, random() * PI * 2, trunk, frond);
+        }
+    for (const block of blocks.slice(0, 14))
+        for (const side of [-1, 1]) {
+            const px = block.x + side * 19, pz = block.z + 18, size = 0.8 + random() * 0.35, angle = random() * PI * 2;
+            if (Math.hypot(px - START.x, pz - START.z) >= 30)
+                palm(batch, px, pz, size, angle, trunk, frond);
+        }
+    const lamp = new THREE.MeshStandardMaterial({ color: "#ffeab4", emissive: "#ffbe6b", emissiveIntensity: 2 });
+    for (const x of AVENUES)
+        for (let z = -157; z < 50; z += 35) {
+            if (STREETS.some((street) => Math.abs(street - z) < ROAD_HALF_WIDTH + 1.5))
+                continue;
+            const px = x + 15.5;
+            batch.box(0.14, 6, 0.14, px, 3, z, metal);
+            batch.box(2.4, 0.14, 0.14, px - 1.2, 6, z, metal);
+            batch.box(1, 0.08, 0.45, px - 2.1, 5.9, z, lamp);
+        }
+    for (const z of STREETS)
+        for (let x = 24; x < 220; x += 35) {
+            if (AVENUES.some((avenue) => Math.abs(avenue - x) < ROAD_HALF_WIDTH + 1.5))
+                continue;
+            batch.box(0.14, 6, 0.14, x, 3, z - 15.5, metal);
+            batch.box(0.14, 0.14, 2.4, x, 6, z - 14.3, metal);
+            batch.box(0.45, 0.08, 1, x, 5.9, z - 13.4, lamp);
+        }
+    // Familiar trackside chevrons still mark the outer turns of the expanded grid.
+    const cornerMat = new THREE.MeshBasicMaterial({ map: textTexture("› › ›", "#16443c", "#ffbf72"), side: THREE.DoubleSide });
+    cornerMat.color.setScalar(1.9);
+    for (const corner of [
+        { x: 0, z: -190, rotation: 0 },
+        { x: 225, z: -175, rotation: -PI / 2 },
+        { x: 210, z: 65, rotation: PI },
+    ]) {
+        const panelGroup = new THREE.Group();
+        panelGroup.position.set(corner.x, 0, corner.z);
+        panelGroup.rotation.y = corner.rotation;
+        city.add(panelGroup);
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(9, 2), cornerMat);
+        panel.position.y = 2.7;
+        panelGroup.add(panel);
+        for (const x of [-3, 3]) cube(panelGroup, 0.15, 2, 0.15, x, 1, 0, metal);
+    }
+    batch.flush(city);
+    // Sign planes also join their own material buckets; no static geometry is left unbatched.
+    mergeStatic(city);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.12, 64), material("#bdb199"));
+    pad.position.set(0, 0.13, 40);
+    scene.add(pad);
+    const line = new THREE.Mesh(new THREE.TorusGeometry(6.7, 0.035, 4, 80), material("#f7d5a0"));
+    line.rotation.x = PI / 2;
+    line.position.set(0, 0.205, 40);
+    scene.add(line);
+    return { city, pad, line };
+}
+/** Default Bay PD public-safety ad shown until the cameras (or a hijack) give the boards something better. */
+function bayPdPoster() {
+    const c = document.createElement("canvas");
+    c.width = 1024;
+    c.height = 512;
+    const ctx = c.getContext("2d")!;
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    paintWithDisplayFont(t, () => {
+        const bg = ctx.createLinearGradient(0, 0, 0, 512);
+        bg.addColorStop(0, "#1b2350");
+        bg.addColorStop(1, "#0d1024");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, 1024, 512);
+        ctx.fillStyle = "#ff3b4e";
+        ctx.fillRect(0, 0, 1024, 18);
+        ctx.fillStyle = "#52e8ff";
+        ctx.fillRect(0, 494, 1024, 18);
+        // Badge: a gold star inside a ring.
+        ctx.save();
+        ctx.translate(180, 250);
+        ctx.fillStyle = "#141323";
+        ctx.beginPath();
+        ctx.arc(0, 0, 128, 0, PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 12;
+        ctx.strokeStyle = "#ffcf4a";
+        ctx.stroke();
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+            const r = i % 2 ? 42 : 100, a = -PI / 2 + i * PI / 5;
+            ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "#ffcf4a";
+        ctx.fill();
+        ctx.fillStyle = "#141323";
+        ctx.font = `italic 900 34px "Barlow Condensed", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("BAY PD", 0, 6);
+        ctx.restore();
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillStyle = "#f0ead9";
+        ctx.font = `italic 900 104px "Barlow Condensed", sans-serif`;
+        ctx.fillText("SMILE.", 350, 190, 640);
+        ctx.fillStyle = "#ff4fb0";
+        ctx.fillText("WE SEE YOUR PAINT.", 350, 300, 640);
+        ctx.fillStyle = "#52e8ff";
+        ctx.font = `800 38px "Barlow Condensed", sans-serif`;
+        ctx.fillText("SOLANA BAY PD · 214 CAMERAS · 0 DAYS OFF", 352, 372, 640);
+        ctx.fillStyle = "#ffcf4a";
+        ctx.font = `italic 800 30px "Barlow Condensed", sans-serif`;
+        ctx.fillText("SEE A SUSPICIOUS RESPRAY? DIAL 9-1-BAY", 352, 430, 640);
+    });
+    return t;
+}
+/** Soft grayscale falloff used as an alphaMap so additive light pools have no hard rim. */
+function falloffTexture(kind: "radial" | "beam") {
+    const c = document.createElement("canvas");
+    c.width = kind === "radial" ? 128 : 8;
+    c.height = 128;
+    const ctx = c.getContext("2d")!;
+    const g = kind === "radial" ? ctx.createRadialGradient(64, 64, 0, 64, 64, 64) : ctx.createLinearGradient(0, 128, 0, 0);
+    if (kind === "radial") {
+        g.addColorStop(0, "#ffffff");
+        g.addColorStop(0.45, "#b0b0b0");
+        g.addColorStop(1, "#000000");
+    }
+    else {
+        // v=0 is the ground end of the cone, v=1 the helicopter.
+        g.addColorStop(0, "#303030");
+        g.addColorStop(0.35, "#ffffff");
+        g.addColorStop(0.85, "#9a9a9a");
+        g.addColorStop(1, "#000000");
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, c.width, c.height);
+    return new THREE.CanvasTexture(c);
+}
+function additive(color: string, opacity: number) {
+    return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+}
+function groundRing(parent: THREE.Object3D, radius: number, mat: THREE.Material) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius - 0.22, radius, 48), mat);
+    ring.rotation.x = -PI / 2;
+    ring.position.y = 0.14;
+    parent.add(ring);
+    return ring;
+}
+const CONE_OPACITY = 0.06;
+function cameraPole(l: Landmark) {
+    const avenue = AVENUES.some((x) => x === l.x);
+    return new THREE.Vector3(l.x + (avenue ? 15.5 : 0), 7, l.z - (avenue ? 0 : 15.5));
+}
+function buildLandmarks(scene: THREE.Scene) {
+    const staticGroup = new THREE.Group();
+    scene.add(staticGroup);
+    const batch = new Batch(), metal = material("#45414f"), dark = material("#1a1422");
+    const blink = new THREE.MeshBasicMaterial({ color: "#ff3030" });
+    // Each cone keeps its own material so it can fade out as the car drives into
+    // it (from the chase camera a nearby cone would otherwise flood the road red).
+    const cones: { mat: THREE.MeshBasicMaterial; x: number; z: number }[] = [];
+    const zoneMat = additive("#ff3b4e", 0.45);
+    for (const l of landmarks("camera")) {
+        const pole = cameraPole(l), avenue = pole.x !== l.x;
+        batch.box(0.22, 7, 0.22, pole.x, 3.5, pole.z, metal);
+        const eye = pole.clone().add(new THREE.Vector3(avenue ? -5 : 0, 0, avenue ? 0 : 5));
+        batch.box(avenue ? 5.2 : 0.2, 0.2, avenue ? 0.2 : 5.2, (eye.x + pole.x) / 2, 7, (eye.z + pole.z) / 2, metal);
+        const cameraBox = new THREE.BoxGeometry(0.65, 0.45, 1.1);
+        const pose = new THREE.Object3D();
+        pose.position.copy(eye);
+        pose.lookAt(l.x, 0, l.z);
+        pose.updateMatrix();
+        batch.add(cameraBox, dark, pose.matrix);
+        const lamp = new THREE.SphereGeometry(0.12, 8, 6);
+        lamp.translate(eye.x, 7.35, eye.z);
+        batch.add(lamp, blink);
+        // Oblique cone: the apex is the camera, and its circular footprint lies on the road.
+        const cone = new THREE.ConeGeometry(18, 7, 32, 1, true), pos = cone.getAttribute("position");
+        for (let i = 0; i < pos.count; i++) {
+            const t = (pos.getY(i) + 3.5) / 7;
+            pos.setXYZ(i, pos.getX(i) + l.x + (eye.x - l.x) * t, pos.getY(i) + 3.6, pos.getZ(i) + l.z + (eye.z - l.z) * t);
+        }
+        cone.computeVertexNormals();
+        const coneMat = additive("#ff3b4e", CONE_OPACITY);
+        coneMat.side = THREE.FrontSide;
+        const coneMesh = new THREE.Mesh(cone, coneMat);
+        coneMesh.renderOrder = 1;
+        scene.add(coneMesh);
+        cones.push({ mat: coneMat, x: l.x, z: l.z });
+        const zone = new THREE.RingGeometry(17.4, 18, 64);
+        zone.rotateX(-PI / 2);
+        zone.translate(l.x, 0.12, l.z);
+        batch.add(zone, zoneMat);
+    }
+    const markers: {
+        group: THREE.Group;
+        beam: THREE.Mesh;
+    }[] = [];
+    const boothMat = material("#2b2436"), opening = material("#0c0a12"), trim = new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff4fb0").multiplyScalar(1.8) });
+    for (const l of landmarks("respray")) {
+        const avenue = AVENUES.some((x) => x === l.x);
+        const booth = new THREE.Group();
+        booth.position.set(l.x + (avenue ? 20 : 0), 0, l.z - (avenue ? 0 : 20));
+        // Default facade is -x; rotating +90 degrees makes it face +z.
+        booth.rotation.y = avenue ? 0 : PI / 2;
+        staticGroup.add(booth);
+        cube(booth, 10, 7, 18, 0, 3.5, 0, boothMat);
+        cube(booth, 0.12, 5.2, 12, -5.08, 2.6, 0, opening);
+        cube(booth, 11.5, 0.25, 19.5, 0, 7.1, 0, trim);
+        sign(booth, "SPRAY & PRAY", 16, 2.6, -5.3, 9, 0, -PI / 2, "#1a0f24", "#ff5fb8");
+        sign(booth, "NEW PAINT · NO QUESTIONS", 12, 1.2, -5.25, 6.1, 0, -PI / 2, "#1a0f24", "#6ff3ff");
+        const group = new THREE.Group();
+        group.position.set(l.x, 0, l.z);
+        scene.add(group);
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 5, 40, 1, true), additive("#ff4fb0", 0.25));
+        beam.position.y = 2.5;
+        group.add(beam);
+        groundRing(group, 6.7, additive("#ff79c6", 0.9));
+        const floor = sign(group, "RESPRAY", 9, 2.2, 0, 0.15, 0, 0, "#2a0f2a", "#ff9ad5");
+        floor.rotation.set(-PI / 2, 0, PI);
+        markers.push({ group, beam });
+    }
+    batch.flush(staticGroup);
+    mergeStatic(staticGroup);
+    const defaultBoard = bayPdPoster();
+    const boardMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(1.25), map: defaultBoard });
+    const boards = new THREE.Group();
+    scene.add(boards);
+    for (const id of ["cam-market", "cam-bridge", "cam-pier"]) {
+        const l = landmarks("camera").find((c) => c.id === id)!;
+        const avenue = AVENUES.some((x) => x === l.x), group = new THREE.Group();
+        group.position.set(l.x + (avenue ? 23 : 0), 0, l.z - (avenue ? 0 : 23));
+        // Face the road, angled toward traffic arriving from the garage side (south / west).
+        group.rotation.y = avenue ? -PI / 3 : -PI / 7;
+        boards.add(group);
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(18, 9), boardMat);
+        panel.position.y = 7.5;
+        group.add(panel);
+        cube(group, 18.6, 9.6, 0.4, 0, 7.5, -0.25, dark);
+        for (const x of [-5, 5])
+            cube(group, 0.4, 3.2, 0.4, x, 1.6, -0.3, metal);
+    }
+    mergeStatic(boards);
+    boards.visible = false;
+    return { markers, blink, boards, boardMat, defaultBoard, cones };
+}
+function buildMissionVisuals(mission: Mission) {
+    const group = new THREE.Group();
+    group.name = "Current mission";
+    const chevrons = document.createElement("canvas");
+    chevrons.width = 256;
+    chevrons.height = 128;
+    const ctx = chevrons.getContext("2d")!;
+    function arrow(color: string, width: number) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineJoin = "miter";
+        ctx.beginPath();
+        ctx.moveTo(62, 8);
+        ctx.lineTo(128, 64);
+        ctx.lineTo(62, 120);
+        ctx.stroke();
+    }
+    arrow("#ff4fb0", 36);
+    arrow("#ff9ad5", 12);
+    const texture = new THREE.CanvasTexture(chevrons);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    const ribbonGeo = new THREE.BufferGeometry();
+    const capacity = Math.max(1, mission.route.length * 2 + 1) * 6;
+    ribbonGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    ribbonGeo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(capacity * 2), 2).setUsage(THREE.DynamicDrawUsage));
+    ribbonGeo.setDrawRange(0, 0);
+    const ribbon = new THREE.Mesh(ribbonGeo, new THREE.MeshBasicMaterial({ map: texture, color: new THREE.Color().setScalar(1.6), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: THREE.DoubleSide, fog: false }));
+    ribbon.frustumCulled = false;
+    ribbon.renderOrder = 2;
+    group.add(ribbon);
+    const gates = mission.checkpoints.slice(0, -1).map((cp, i) => {
+        const gate = new THREE.Group();
+        gate.position.set(cp.x, 0, cp.z);
+        group.add(gate);
+        const from = mission.route[i], to = mission.route[i + 1];
+        if (from && to && Math.abs(to.x - from.x) > Math.abs(to.z - from.z))
+            gate.rotation.y = PI / 2;
+        const mat = additive("#ffcf4a", 0.85);
+        mat.color.multiplyScalar(1.7);
+        const batch = new Batch();
+        batch.box(0.18, 6, 0.18, -10, 3, 0, mat);
+        batch.box(0.18, 6, 0.18, 10, 3, 0, mat);
+        batch.box(20, 0.18, 0.18, 0, 6, 0, mat);
+        batch.flush(gate);
+        sign(gate, String(i + 1).padStart(2, "0"), 2.2, 1.2, 0, 6.9, 0, 0, "#211c29", "#ffcf4a");
+        const curtain = new THREE.Mesh(new THREE.PlaneGeometry(20, 6), additive("#ffcf4a", 0.1));
+        curtain.position.y = 3;
+        gate.add(curtain);
+        return { group: gate, mat, curtain };
+    });
+    const currentRing = groundRing(group, 6.5, additive("#ffcf4a", 0.9));
+    const dest = new THREE.Group();
+    dest.position.set(mission.destination.x, 0, mission.destination.z);
+    group.add(dest);
+    const fade = document.createElement("canvas");
+    fade.width = 8;
+    fade.height = 256;
+    const fadeCtx = fade.getContext("2d")!, gradient = fadeCtx.createLinearGradient(0, 0, 0, 256);
+    gradient.addColorStop(0, "#000000");
+    gradient.addColorStop(0.55, "#777777");
+    gradient.addColorStop(1, "#ffffff");
+    fadeCtx.fillStyle = gradient;
+    fadeCtx.fillRect(0, 0, 8, 256);
+    const fadeTexture = new THREE.CanvasTexture(fade);
+    const beamMat = additive("#ffcf4a", 0.28);
+    beamMat.alphaMap = fadeTexture;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 70, 48, 1, true), beamMat);
+    beam.position.y = 35;
+    dest.add(beam);
+    const coreMat = additive("#fff0b0", 0.4);
+    coreMat.alphaMap = fadeTexture;
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 70, 24, 1, true), coreMat);
+    core.position.y = 35;
+    dest.add(core);
+    groundRing(dest, 7.4, additive("#ffcf4a", 0.9));
+    const destinationSign = sign(dest, `DROP · ${mission.destination.name}`, 15, 2.5, 0, 14, 0, 0, "#141323", "#ffcf4a");
+    const bagMat = new THREE.MeshStandardMaterial({ color: "#f2b730", emissive: "#ffb300", emissiveIntensity: 0.9, roughness: 0.4, metalness: 0.35 });
+    const dollarMat = new THREE.MeshBasicMaterial({ map: textTexture("$", "#dba132", "#412a16", 128, 128), side: THREE.DoubleSide });
+    const stashes = mission.stashes.map((stash) => {
+        const anchor = new THREE.Group();
+        anchor.position.set(stash.x, 0, stash.z);
+        group.add(anchor);
+        const bag = new THREE.Group();
+        anchor.add(bag);
+        const batch = new Batch();
+        const body = new THREE.SphereGeometry(0.7, 14, 10);
+        body.scale(1, 1.15, 0.7);
+        batch.add(body, bagMat);
+        const neck = new THREE.CylinderGeometry(0.29, 0.12, 0.3, 12);
+        neck.translate(0, 0.8, 0);
+        batch.add(neck, bagMat);
+        batch.flush(bag);
+        for (const side of [-1, 1]) {
+            const decal = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.6), dollarMat);
+            decal.position.set(0, 0, side * 0.49);
+            decal.rotation.y = side === 1 ? 0 : PI;
+            bag.add(decal);
+        }
+        mergeStatic(bag);
+        bag.scale.setScalar(1.6);
+        groundRing(anchor, 2.4, additive("#ffcf4a", 0.8));
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 3.4, 20, 1, true), additive("#ffcf4a", 0.14));
+        pillar.position.y = 1.5;
+        anchor.add(pillar);
+        return { id: stash.id, anchor, bag };
+    });
+    // Materials created for empty stash lists still have explicit ownership.
+    if (!stashes.length) {
+        bagMat.dispose();
+        dollarMat.map?.dispose();
+        dollarMat.dispose();
+    }
+    return { group, ribbon, texture, gates, currentRing, destinationSign, stashes, lastCheckpoint: -1, ribbonTime: -1 };
+}
+type MissionVisuals = ReturnType<typeof buildMissionVisuals>;
+const missionKey = (m: Mission) =>
+    `${m.destination.id}|${m.route.map((p) => `${p.x},${p.z}`).join(";")}|${m.checkpoints.map((c) => c.name).join(";")}|${m.stashes.map((s) => s.id).join(",")}`;
+function updateRibbon(visuals: MissionVisuals, mission: Mission, checkpoint: number, x: number, z: number) {
+    const geometry = visuals.ribbon.geometry, positions = geometry.getAttribute("position"), uv = geometry.getAttribute("uv");
+    const route = mission.route;
+    if (checkpoint >= route.length - 1) {
+        geometry.setDrawRange(0, 0);
+        return;
+    }
+    // Mission routes are node-to-node, but a leg can be diagonal (e.g. the pad at
+    // START to the first corner). Expand those into road-following L-bends.
+    const legs: Point[] = [route[checkpoint]];
+    for (let i = checkpoint + 1; i < route.length; i++) {
+        const a = legs[legs.length - 1], b = route[i];
+        if (Math.abs(b.x - a.x) > 0.5 && Math.abs(b.z - a.z) > 0.5)
+            legs.push(AVENUES.some((av) => Math.abs(av - a.x) < 0.5) ? { x: a.x, z: b.z } : { x: b.x, z: a.z });
+        legs.push(b);
+    }
+    // The car is on the current leg: route[checkpoint] up to route[checkpoint + 1].
+    const legEnd = legs.indexOf(route[checkpoint + 1]);
+    let bestT = 0, bestSeg = 0, bestD = Infinity;
+    for (let i = 0; i < legEnd; i++) {
+        const a = legs[i], b = legs[i + 1], dx = b.x - a.x, dz = b.z - a.z;
+        const tt = THREE.MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+        const d = Math.hypot(a.x + dx * tt - x, a.z + dz * tt - z);
+        if (d < bestD) {
+            bestD = d;
+            bestT = tt;
+            bestSeg = i;
+        }
+    }
+    const a0 = legs[bestSeg], b0 = legs[bestSeg + 1];
+    let from: Point = { x: a0.x + (b0.x - a0.x) * bestT, z: a0.z + (b0.z - a0.z) * bestT }, distance = 0, vertex = 0;
+    for (let i = bestSeg + 1; i < legs.length; i++) {
+        const to = legs[i], length = Math.hypot(to.x - from.x, to.z - from.z);
+        if (length < 0.001) {
+            from = to;
+            continue;
+        }
+        const fx = (to.x - from.x) / length, fz = (to.z - from.z) / length, rx = -fz * 1.6, rz = fx * 1.6;
+        const sx = from.x - fx * 1.6, sz = from.z - fz * 1.6, ex = to.x + fx * 1.6, ez = to.z + fz * 1.6;
+        const corners = [[sx + rx, sz + rz], [sx - rx, sz - rz], [ex - rx, ez - rz], [ex + rx, ez + rz]];
+        for (const index of [0, 1, 2, 0, 2, 3]) {
+            positions.setXYZ(vertex, corners[index][0], 0.13, corners[index][1]);
+            uv.setXY(vertex, (distance + (index < 2 ? -1.6 : length + 1.6)) / 4, index === 0 || index === 3 ? 0 : 1);
+            vertex++;
+        }
+        distance += length;
+        from = to;
+    }
+    positions.needsUpdate = uv.needsUpdate = true;
+    geometry.setDrawRange(0, vertex);
+}
+function buildArm(car: CarModel) {
+    const group = new THREE.Group();
+    group.name = "Driver / Ink & Iron";
+    car.group.add(group);
+    const skin = material("#c98d6a", 0.7), forearmMat = material("#c98d6a", 0.62);
+    // Elbow hangs out past the door line; the hand reaches back in toward the
+    // wheel through the open window. The forearm's top face (where the ink sits)
+    // is what the chase camera sees.
+    const elbow = new THREE.Vector3(-1.66, 1.23, 0.5), wrist = new THREE.Vector3(-1.2, 1.25, -0.36);
+    const length = elbow.distanceTo(wrist);
+    const direction = wrist.clone().sub(elbow).normalize();
+    const rotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    // u follows elbow→wrist; v wraps the circumference with the image centre on
+    // the up/outward face. The seam starts opposite that face, and v runs against
+    // theta so the ink is not mirrored.
+    const outward = new THREE.Vector3(-0.35, 1, 0.1).normalize().applyQuaternion(rotation.clone().invert());
+    const outwardAngle = Math.atan2(outward.x, outward.z);
+    const geo = new THREE.CylinderGeometry(0.115, 0.145, length, 20, 1, true, outwardAngle - PI, PI * 2), pos = geo.getAttribute("position"), uv = geo.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++)
+        uv.setXY(i, pos.getY(i) / length + 0.5, 0.5 - (uv.getX(i) * 2 - 1) / 1.6);
+    const forearm = new THREE.Mesh(geo, forearmMat);
+    forearm.quaternion.copy(rotation);
+    forearm.position.copy(elbow).add(wrist).multiplyScalar(0.5);
+    forearm.castShadow = true;
+    group.add(forearm);
+    const elbowCap = new THREE.Mesh(new THREE.SphereGeometry(0.145, 14, 10), skin);
+    elbowCap.position.copy(elbow);
+    group.add(elbowCap);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), skin);
+    hand.scale.set(0.8, 0.62, 1.45);
+    hand.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction));
+    hand.position.copy(wrist).addScaledVector(direction, 0.12);
+    group.add(hand);
+    // Short T-shirt sleeve: from just behind the elbow back to the shoulder.
+    // Kept low and inboard so it doesn't hide the inked forearm from the chase cam.
+    const shoulder = new THREE.Vector3(-0.9, 1.32, 0.82);
+    const sleeveStart = elbow.clone().lerp(shoulder, 0.4);
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, sleeveStart.distanceTo(shoulder), 14), material("#1b1f2a"));
+    sleeve.position.copy(sleeveStart).add(shoulder).multiplyScalar(0.5);
+    sleeve.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), shoulder.clone().sub(sleeveStart).normalize());
+    group.add(sleeve);
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, elbow.distanceTo(sleeveStart) + 0.05, 12), skin);
+    upper.position.copy(elbow).add(sleeveStart).multiplyScalar(0.5);
+    upper.quaternion.copy(sleeve.quaternion);
+    group.add(upper);
+    return { group, material: forearmMat };
+}
+/** Merge each rigid car part; wheels retain their own local rotation. */
+function compactCar(car: CarModel) {
+    const rigid = new THREE.Group();
+    for (const child of [...car.group.children])
+        if (child instanceof THREE.Mesh && child.visible && !child.material.transparent)
+            rigid.add(child);
+    // Transparent glass/wrap must preserve their sorting and polygon-offset materials.
+    for (const child of [...car.group.children])
+        if (child instanceof THREE.Mesh && child.visible && child.position.y > 0.1)
+            rigid.add(child);
+    car.group.add(rigid);
+    mergeStatic(rigid);
+    for (const wheel of car.wheels)
+        mergeStatic(wheel);
+}
+/** Instance matching rigid parts across the fleet, including rotating wheels.
+ * Logical makeCar groups remain off-scene so their original control API still works.
+ */
+function createFleet(scene: THREE.Scene, models: CarModel[]) {
+    type Entry = {
+        mesh: THREE.Mesh;
+        owner: CarModel;
+        index: number;
+    };
+    const buckets = new Map<string, {
+        geometry: THREE.BufferGeometry;
+        material: THREE.Material;
+        entries: Entry[];
+    }>();
+    for (const model of models) {
+        compactCar(model);
+        let index = 0;
+        model.group.traverse((obj) => {
+            if (!(obj instanceof THREE.Mesh) || Array.isArray(obj.material) || !obj.visible)
+                return;
+            const mat = obj.material;
+            const standard = mat instanceof THREE.MeshStandardMaterial ? mat : null;
+            const key = `${index++}/${mat.type}/${standard?.color.getHex()}/${standard?.emissive.getHex()}/${standard?.roughness}/${standard?.metalness}/${mat.transparent}/${mat.side}`;
+            const bucket: {
+                geometry: THREE.BufferGeometry;
+                material: THREE.Material;
+                entries: Entry[];
+            } = buckets.get(key) ?? { geometry: obj.geometry, material: mat, entries: [] };
+            bucket.entries.push({ mesh: obj, owner: model, index: bucket.entries.length });
+            buckets.set(key, bucket);
+        });
+    }
+    const batches = [...buckets.values()].map((bucket) => {
+        const mesh = new THREE.InstancedMesh(bucket.geometry, bucket.material, bucket.entries.length);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.castShadow = !bucket.material.transparent;
+        mesh.receiveShadow = true;
+        mesh.frustumCulled = false;
+        scene.add(mesh);
+        return { ...bucket, instance: mesh };
+    });
+    const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+    return {
+        sync() {
+            models.forEach((m) => m.group.updateMatrixWorld(true));
+            for (const batch of batches) {
+                batch.instance.visible = batch.entries.some((e) => e.owner.group.visible);
+                for (const entry of batch.entries)
+                    batch.instance.setMatrixAt(entry.index, entry.owner.group.visible ? entry.mesh.matrixWorld : hidden);
+                batch.instance.instanceMatrix.needsUpdate = true;
+            }
+        },
+        dispose() { models.forEach((model) => { disposeTree(model.group); model.wrap.dispose(); }); },
+    };
+}
+function createTraffic() {
+    const random = seeded(7031), adjacency = new Map(NODES.map((n) => [n.id, [] as string[]]));
+    for (const edge of EDGES) {
+        adjacency.get(edge.a)!.push(edge.b);
+        adjacency.get(edge.b)!.push(edge.a);
+    }
+    const colors = ["#f1ca8c", "#6faca6", "#a16e71", "#d9cbb4", "#6d8795", "#be946b", "#bd8cad", "#82c6b4"];
+    const traffic = colors.map((color) => {
+        let edge = EDGES[0], t = 0;
+        for (let tries = 0; tries < 100; tries++) {
+            edge = EDGES[Math.floor(random() * EDGES.length)];
+            t = random() * edge.length;
+            const a = node(edge.a), b = node(edge.b), ratio = t / edge.length;
+            if (Math.hypot(a.x + (b.x - a.x) * ratio - START.x, a.z + (b.z - a.z) * ratio - START.z) >= 50)
+                break;
+        }
+        return { car: makeCar(color, "civilian"), from: edge.a, to: edge.b, t, speed: 8 + random() * 4 };
+    });
+    return { traffic, advance(dt: number) {
+            for (const vehicle of traffic) {
+                vehicle.t += vehicle.speed * dt;
+                let a = node(vehicle.from), b = node(vehicle.to), length = Math.hypot(b.x - a.x, b.z - a.z);
+                while (vehicle.t >= length) {
+                    vehicle.t -= length;
+                    const previous = vehicle.from;
+                    vehicle.from = vehicle.to;
+                    const neighbours = adjacency.get(vehicle.from)!;
+                    const forward = neighbours.filter((id) => id !== previous);
+                    const choices = forward.length ? forward : neighbours;
+                    vehicle.to = choices[Math.floor(random() * choices.length)];
+                    a = node(vehicle.from);
+                    b = node(vehicle.to);
+                    length = Math.hypot(b.x - a.x, b.z - a.z);
+                }
+                const h = Math.atan2(b.x - a.x, -(b.z - a.z)), t = vehicle.t / length;
+                vehicle.car.group.position.set(a.x + (b.x - a.x) * t + Math.cos(h) * 5, 0.025, a.z + (b.z - a.z) * t + Math.sin(h) * 5);
+                vehicle.car.group.rotation.y = -h;
+                for (const wheel of vehicle.car.wheels)
+                    wheel.rotation.x -= vehicle.speed * dt / 0.6;
+            }
+        } };
 }
 export function World(all: WorldProps) {
-  const host = useRef<HTMLDivElement>(null),
-    props = useRef(all);
-  props.current = all;
-  useEffect(() => {
-    const el = host.current;
-    if (!el) return;
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        preserveDrawingBuffer: true,
-        powerPreference: "high-performance",
-      });
-    } catch {
-      props.current.onError?.(
-        "Enable hardware acceleration or try another browser to drive the 3D coast.",
-      );
-      return;
-    }
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-    renderer.setClearColor("#f59a7a");
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
-    el.appendChild(renderer.domElement);
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog("#e59486", 90, 330);
-    const camera = new THREE.PerspectiveCamera(47, 1, 0.1, 1000);
-    camera.position.set(11, 6, 51);
-    scene.add(new THREE.HemisphereLight("#ffc9a8", "#4b3f78", 2.2));
-    const sun = new THREE.DirectionalLight("#ffb482", 3.0);
-    sun.position.set(-45, 75, -20);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -65;
-    sun.shadow.camera.right = 65;
-    sun.shadow.camera.top = 65;
-    sun.shadow.camera.bottom = -65;
-    sun.shadow.normalBias = 0.035;
-    sun.shadow.bias = -0.0001;
-    scene.add(sun);
-    scene.add(sun.target);
-    const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(700, 32, 16),
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        depthWrite: false,
-        uniforms: {
-          top: { value: new THREE.Color("#3d2c6b") },
-          bottom: { value: new THREE.Color("#ff9a6e") },
-        },
-        vertexShader:
-          "varying vec3 vP; void main(){vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
-        fragmentShader:
-          "varying vec3 vP; uniform vec3 top; uniform vec3 bottom; void main(){float t=clamp(normalize(vP).y*1.5,0.,1.);gl_FragColor=vec4(mix(bottom,top,pow(t,.6)),1.);}",
-      }),
-    );
-    scene.add(sky);
-    const sunDisc = new THREE.Mesh(
-      new THREE.SphereGeometry(23, 32, 24),
-      new THREE.MeshBasicMaterial({ color: "#ffd08a", fog: false }),
-    );
-    sunDisc.position.set(-290, 48, -240);
-    scene.add(sunDisc);
-    const { city, pad, line, marker, beam } = buildCity(scene);
-    void city;
-    const car = makeCar(props.current.paint, "hero");
-    // Crew emblem on the roof: visible from the chase camera the whole run.
-    const emblemMat = new THREE.MeshStandardMaterial({
-      color: "#ffffff",
-      transparent: true,
-      roughness: 0.4,
-      metalness: 0.1,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3,
-    });
-    const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.86), emblemMat);
-    emblem.rotation.x = -Math.PI / 2 + 0.03;
-    emblem.position.set(0, 1.835, 0.37);
-    emblem.visible = false;
-    car.group.add(emblem);
-    // Bay PD billboards along the route: they show the paint the cameras saw.
-    const boardMat = new THREE.MeshBasicMaterial({ color: "#ffffff" });
-    boardMat.color.setScalar(1.25);
-    const boards = [
-      { x: 108, z: -118, r: -1.3 },
-      { x: 158, z: 8, r: -2.75 },
-    ].map((b) => {
-      const g = new THREE.Group();
-      g.position.set(b.x, 0, b.z);
-      g.rotation.y = b.r;
-      const panel = new THREE.Mesh(new THREE.PlaneGeometry(18, 9), boardMat);
-      panel.position.y = 6.6;
-      g.add(panel);
-      const back = new THREE.Mesh(
-        new THREE.BoxGeometry(18.6, 9.6, 0.4),
-        material("#1a1422", 0.7),
-      );
-      back.position.set(0, 6.6, -0.25);
-      g.add(back);
-      for (const x of [-5, 5]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.4, 0.4), material("#2a2733"));
-        post.position.set(x, 1.2, -0.3);
-        g.add(post);
-      }
-      g.visible = false;
-      scene.add(g);
-      return g;
-    });
-    let lastBoard = "",
-      boardTex: THREE.Texture | null = null;
-    let lastEmblem = "",
-      emblemTex: THREE.Texture | null = null;
-    scene.add(car.group);
-    car.group.position.set(0, 0, 40);
-    const gates = CHECKPOINTS.map((cp, i) => {
-      const g = new THREE.Group();
-      g.position.set(cp.x, 0, cp.z);
-      if (i % 2) g.rotation.y = PI / 2;
-      scene.add(g);
-      const m = new THREE.MeshBasicMaterial({
-        color: "#ffd476",
-        transparent: true,
-        opacity: 0.8,
-      });
-      cube(g, 0.18, 6, 0.18, -10, 3, 0, m);
-      cube(g, 0.18, 6, 0.18, 10, 3, 0, m);
-      cube(g, 20, 0.18, 0.18, 0, 6, 0, m);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(2, 0.05, 5, 40), m);
-      ring.position.set(0, 3.1, 0);
-      g.add(ring);
-      sign(
-        g,
-        String(i + 1).padStart(2, "0"),
-        2.2,
-        1.2,
-        0,
-        3.1,
-        0.1,
-        0,
-        "#23544a",
-        "#ffdb8a",
-      );
-      return g;
-    });
-    // Moving civilian cars on the far lane create a living coastal circuit.
-    const traffic = Array.from({ length: 6 }, (_, i) => {
-      const c = makeCar(
-        ["#f1ca8c", "#6faca6", "#a16e71", "#d9cbb4", "#6d8795", "#be946b"][i],
-        "civilian",
-      );
-      scene.add(c.group);
-      return c;
-    });
-    const cops = Array.from({ length: 3 }, () => {
-      const c = makeCar("#10161c", "police");
-      c.group.visible = false;
-      scene.add(c.group);
-      return c;
-    });
-    // Police helicopter: a searchlight that follows the car at three stars.
-    const heli = new THREE.Group();
-    const heliBody = material("#141a22", 0.5, 0.3);
-    const cabin = new THREE.Mesh(new THREE.CapsuleGeometry(1.1, 2.4, 4, 10), heliBody);
-    cabin.rotation.x = PI / 2;
-    heli.add(cabin);
-    cube(heli, 0.35, 0.35, 4.6, 0, 0.2, 3.4, heliBody);
-    cube(heli, 0.1, 1.2, 0.8, 0, 0.7, 5.6, heliBody);
-    const rotor = cube(heli, 9, 0.06, 0.32, 0, 1.35, 0, material("#0a0d12", 0.6));
-    const beacon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 8, 6),
-      new THREE.MeshBasicMaterial({ color: "#ff3030" }),
-    );
-    beacon.position.set(0, -0.9, -0.6);
-    heli.add(beacon);
-    heli.visible = false;
-    scene.add(heli);
-    const searchlight = new THREE.Mesh(
-      new THREE.ConeGeometry(3.4, 24, 28, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: "#fff4d0",
-        transparent: true,
-        opacity: 0.045,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-      }),
-    );
-    searchlight.visible = false;
-    scene.add(searchlight);
-    const spot = new THREE.Mesh(
-      new THREE.CircleGeometry(4.3, 32),
-      new THREE.MeshBasicMaterial({
-        color: "#fff1c2",
-        transparent: true,
-        opacity: 0.28,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    spot.rotation.x = -PI / 2;
-    spot.visible = false;
-    scene.add(spot);
-    const dustGeo = new THREE.BufferGeometry();
-    const dustPos = new Float32Array(80 * 3);
-    dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
-    const dust = new THREE.Points(
-      dustGeo,
-      new THREE.PointsMaterial({
-        size: 0.35,
-        color: "#d9d0b0",
-        transparent: true,
-        opacity: 0.5,
-        depthWrite: false,
-      }),
-    );
-    scene.add(dust);
-    let dustCursor = 0;
-    let state = createDriveState(),
-      lastRun = props.current.runId,
-      lastMode = props.current.mode,
-      lastTime = performance.now(),
-      raf = 0,
-      dead = false,
-      finishedReported = false,
-      lastUi = 0,
-      textureVersion = 0,
-      lastWrap = "",
-      lastPaint = "",
-      lastGlow: string | null | undefined = undefined,
-      currentTexture: THREE.Texture | null = null,
-      orbit = 0,
-      dragAngle = 0,
-      dragX: number | null = null;
-    const target = new THREE.Vector3(),
-      look = new THREE.Vector3();
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const dragStart = (e: PointerEvent) => {
-      if (props.current.mode === "drive") return;
-      dragX = e.clientX;
-      el.setPointerCapture(e.pointerId);
-    };
-    const dragMove = (e: PointerEvent) => {
-      if (dragX === null) return;
-      dragAngle -= (e.clientX - dragX) * 0.008;
-      dragX = e.clientX;
-    };
-    const dragEnd = () => {
-      dragX = null;
-    };
-    el.addEventListener("pointerdown", dragStart);
-    el.addEventListener("pointermove", dragMove);
-    el.addEventListener("pointerup", dragEnd);
-    el.addEventListener("pointercancel", dragEnd);
-    const bloomOn = el.clientWidth >= 700 && !reduced;
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.45, 0.96);
-    composer.addPass(bloom);
-    composer.addPass(new OutputPass());
-    const draw = () =>
-      bloomOn ? composer.render() : renderer.render(scene, camera);
-    const resize = () => {
-      const w = el.clientWidth,
-        h = el.clientHeight;
-      if (!w || !h) return;
-      renderer.setSize(w, h, false);
-      composer.setSize(w, h);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(el);
-    resize();
-    const keys = (down: boolean) => (e: KeyboardEvent) => {
-      if (props.current.mode !== "drive" || props.current.paused) return;
-      const key = e.key.toLowerCase(),
-        c = props.current.controls.current;
-      const map: Record<string, keyof DriveControls> = {
-        w: "gas",
-        arrowup: "gas",
-        s: "brake",
-        arrowdown: "brake",
-        a: "left",
-        arrowleft: "left",
-        d: "right",
-        arrowright: "right",
-        shift: "boost",
-        " ": "drift",
-      };
-      if (map[key]) {
-        e.preventDefault();
-        c[map[key]] = down;
-      }
-    };
-    const keyDown = keys(true),
-      keyUp = keys(false);
-    const blur = () =>
-      Object.keys(props.current.controls.current).forEach(
-        (k) =>
-          (props.current.controls.current[k as keyof DriveControls] = false),
-      );
-    window.addEventListener("keydown", keyDown);
-    window.addEventListener("keyup", keyUp);
-    window.addEventListener("blur", blur);
-    const capture = () => {
-      draw();
-      return renderer.domElement.toDataURL("image/png");
-    };
-    // A fixed "security camera" frame of the car, rendered and presented in the
-    // same task so the player never sees the cut.
-    const cctv = () => {
-      const pos = camera.position.clone(),
-        quat = camera.quaternion.clone(),
-        fov = camera.fov;
-      camera.clearViewOffset();
-      camera.position.set(state.x + 7.5, 5.6, state.z - 8.5);
-      camera.lookAt(state.x, 0.9, state.z);
-      camera.fov = 40;
-      camera.updateProjectionMatrix();
-      draw();
-      const url = renderer.domElement.toDataURL("image/jpeg", 0.86);
-      camera.position.copy(pos);
-      camera.quaternion.copy(quat);
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-      draw();
-      return url;
-    };
-    props.current.captureRef.current = capture;
-    if (props.current.apiRef)
-      props.current.apiRef.current = {
-        respray: (changed) => {
-          const r = applyRespray(state, changed);
-          state = r.state;
-          return { cleared: r.cleared, remaining: r.remaining };
-        },
-        teleport: import.meta.env.DEV
-          ? (x, z, heading) => {
-              const trail = Array.from({ length: 80 }, (_, i) => {
-                const back = (79 - i) * 1.6;
-                return {
-                  x: x - Math.sin(heading) * back,
-                  z: z + Math.cos(heading) * back,
-                  d: i * 1.6,
-                };
-              });
-              state = { ...state, x, z, heading, trail };
-            }
-          : undefined,
-      };
-    const tick = (now: number) => {
-      if (dead) return;
-      const dt = Math.min((now - lastTime) / 1000, 0.05);
-      lastTime = now;
-      const p = props.current;
-      if (p.paused && p.mode !== "drive") {
-        raf = requestAnimationFrame(tick);
-        return;
-      }
-      if ((p.billboardUrl ?? "") !== lastBoard) {
-        lastBoard = p.billboardUrl ?? "";
-        if (lastBoard)
-          new THREE.TextureLoader().load(lastBoard, (tex) => {
-            if (dead) return tex.dispose();
-            tex.colorSpace = THREE.SRGBColorSpace;
-            boardTex?.dispose();
-            boardTex = tex;
-            boardMat.map = tex;
-            boardMat.needsUpdate = true;
-          });
-      }
-      for (const b of boards)
-        b.visible = p.mode === "drive" && !!lastBoard && !!boardMat.map;
-      if ((p.emblemUrl ?? "") !== lastEmblem) {
-        lastEmblem = p.emblemUrl ?? "";
-        if (!lastEmblem) emblem.visible = false;
-        else
-          new THREE.TextureLoader().load(lastEmblem, (tex) => {
-            if (dead) return tex.dispose();
-            tex.colorSpace = THREE.SRGBColorSpace;
-            emblemTex?.dispose();
-            emblemTex = tex;
-            emblemMat.map = tex;
-            emblemMat.needsUpdate = true;
-            emblem.visible = true;
-          });
-      }
-      if (p.underglow !== lastGlow) {
-        lastGlow = p.underglow;
-        car.setUnderglow(p.underglow ?? null);
-      }
-      if (p.paint !== lastPaint) {
-        lastPaint = p.paint;
-        car.body.color.set(p.paint);
-      }
-      if (p.wrapUrl !== lastWrap) {
-        lastWrap = p.wrapUrl;
-        const ver = ++textureVersion;
-        new THREE.TextureLoader().load(
-          p.wrapUrl,
-          (tex) => {
-            if (dead || ver !== textureVersion) {
-              tex.dispose();
-              return;
-            }
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.anisotropy = Math.min(
-              8,
-              renderer.capabilities.getMaxAnisotropy(),
-            );
-            currentTexture?.dispose();
-            currentTexture = tex;
-            car.wrap.map = tex;
-            car.wrap.needsUpdate = true;
-          },
-          undefined,
-          () =>
-            p.onError?.(
-              "The livery texture could not load. Reopen the garage and try again.",
-            ),
-        );
-      }
-      if (p.runId !== lastRun) {
-        state = createDriveState();
-        lastRun = p.runId;
-        finishedReported = false;
-        camera.position.set(0, 6, 52);
-      }
-      if (p.mode !== lastMode) {
-        lastMode = p.mode;
-        blur();
-        if (p.mode !== "drive") {
-          car.group.position.set(0, 0, 40);
-          car.group.rotation.set(0, 0, 0);
-          orbit = 0;
+    const host = useRef<HTMLDivElement>(null), props = useRef(all);
+    props.current = all;
+    useEffect(() => {
+        const el = host.current;
+        if (!el)
+            return;
+        let renderer: THREE.WebGLRenderer;
+        try {
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                preserveDrawingBuffer: true,
+                powerPreference: "high-performance",
+            });
         }
-      }
-      if (p.mode === "drive" && !p.paused && !state.finished) {
-        state = stepDrive(
-          state,
-          {
-            ...p.controls.current,
-            gas:
-              p.controls.current.gas ||
-              Boolean(p.autoThrottle && !p.controls.current.brake),
-          },
-          dt,
-        );
-        car.setBrake(Boolean(p.controls.current.brake));
-        car.group.position.set(state.x, 0.025, state.z);
-        car.group.rotation.y = -state.heading;
-        car.group.rotation.z = THREE.MathUtils.lerp(
-          car.group.rotation.z,
-          (p.controls.current.left ? 1 : p.controls.current.right ? -1 : 0) *
-            Math.min(0.06, state.speed * 0.003),
-          0.12,
-        );
-        for (const w of car.wheels) w.rotation.x -= (state.speed * dt) / 0.6;
-        for (const e of state.events)
-          p.onEvent?.(e, e === "wanted" ? cctv() : undefined);
-        if (
-          (p.controls.current.drift || p.controls.current.brake) &&
-          (p.controls.current.left || p.controls.current.right) &&
-          state.speed > 9
-        ) {
-          for (let i = 0; i < 2; i++) {
-            const n = (dustCursor++ % 80) * 3;
-            dustPos[n] = state.x + (Math.random() - 0.5) * 3;
-            dustPos[n + 1] = 0.3 + Math.random();
-            dustPos[n + 2] = state.z + Math.cos(state.heading) * 2;
-          }
-          dustGeo.attributes.position.needsUpdate = true;
+        catch {
+            props.current.onError?.("Enable hardware acceleration or try another browser to drive the 3D coast.");
+            return;
         }
-      }
-      const inDrive = p.mode === "drive";
-      pad.visible = !inDrive;
-      line.visible = !inDrive;
-      dust.visible = inDrive;
-      for (let i = 0; i < gates.length; i++) {
-        gates[i].visible = inDrive && i >= state.checkpoint;
-        gates[i].scale.setScalar(i === state.checkpoint ? 1 : 0.6);
-      }
-      const t = now / 1000;
-      const stars = starsFor(state.heat);
-      marker.visible = inDrive && !state.resprayUsed && state.heat > 0;
-      if (marker.visible) {
-        beam.scale.y = 1 + Math.sin(t * 3) * 0.12;
-        marker.rotation.y = t * 0.4;
-      }
-      for (let i = 0; i < cops.length; i++) {
-        const cop = state.cops[i];
-        const c = cops[i];
-        c.group.visible = inDrive && Boolean(cop);
-        if (!cop || !inDrive) continue;
-        const pose = copPose(state, cop);
-        const side = i === 0 ? 0 : i === 1 ? 3.6 : -3.6;
-        c.group.position.set(
-          pose.x + Math.cos(pose.heading) * side,
-          0.02,
-          pose.z + Math.sin(pose.heading) * side,
-        );
-        c.group.rotation.y = -pose.heading;
-        c.setSiren(t + i * 0.37);
-        for (const w of c.wheels) w.rotation.x -= (30 * dt) / 0.6;
-      }
-      const heliOn = inDrive && stars >= 3 && !state.finished;
-      heli.visible = searchlight.visible = spot.visible = heliOn;
-      if (heliOn) {
-        const hx = state.x + Math.sin(t * 0.5) * 9,
-          hz = state.z + Math.cos(t * 0.5) * 9;
-        heli.position.set(hx, 24, hz);
-        heli.rotation.y = -t * 0.5 + PI / 2;
-        rotor.rotation.y = t * 38;
-        beacon.visible = Math.sin(t * 9) > 0;
-        const sx = state.x + Math.sin(state.heading) * 2,
-          sz = state.z - Math.cos(state.heading) * 2;
-        spot.position.set(sx, 0.16, sz);
-        searchlight.position.set((hx + sx) / 2, 12, (hz + sz) / 2);
-        searchlight.lookAt(sx, 0, sz);
-        searchlight.rotateX(-PI / 2);
-      }
-      for (let i = 0; i < traffic.length; i++) {
-        let d = (state.elapsed * 4 + i * 97) % 580;
-        let x, z, h;
-        if (d < 150) {
-          x = -5;
-          z = 50 - d;
-          h = 0;
-        } else if (d < 290) {
-          x = d - 150;
-          z = -105;
-          h = PI / 2;
-        } else if (d < 440) {
-          x = 145;
-          z = -100 + d - 290;
-          h = PI;
-        } else {
-          x = 140 - (d - 440);
-          z = 55;
-          h = -PI / 2;
-        }
-        traffic[i].group.position.set(x, 0, z);
-        traffic[i].group.rotation.y = -h;
-        traffic[i].group.visible = inDrive;
-        if (
-          inDrive &&
-          !p.paused &&
-          !state.finished &&
-          state.collisionCooldown <= 0 &&
-          Math.hypot(state.x - x, state.z - z) < 3.5
-        ) {
-          state.speed *= 0.55;
-          state.collisions++;
-          state.collisionCooldown = 1;
-          if (state.wantedTriggered && state.heat > 0)
-            state.heat = Math.min(100, state.heat + 5);
-        }
-      }
-      if (inDrive) {
-        target.set(
-          state.x - Math.sin(state.heading) * 9.5,
-          6.6,
-          state.z + Math.cos(state.heading) * 9.5,
-        );
-        look.set(
-          state.x + Math.sin(state.heading) * 8,
-          1,
-          state.z - Math.cos(state.heading) * 8,
-        );
-        camera.fov = THREE.MathUtils.lerp(
-          camera.fov,
-          p.controls.current.boost && state.speed > 25 ? 60 : 53,
-          0.04,
-        );
-        camera.clearViewOffset();
-        sun.position.set(state.x - 45, 75, state.z - 20);
-        sun.target.position.set(state.x, 0, state.z);
-      } else {
-        if (!p.paused && !reduced) orbit += dt * 0.065;
-        const a = 2.06 + Math.sin(orbit) * 0.15 + dragAngle;
-        const distance = el.clientWidth < 700 ? 22 : 12.7;
-        target.set(
-          Math.sin(a) * distance,
-          el.clientWidth < 700 ? 7.5 : 5.2,
-          40 + Math.cos(a) * distance,
-        );
-        look.set(0, 1.0, 40);
-        camera.fov = 47;
-        sun.position.set(-45, 75, 20);
-        sun.target.position.set(0, 0, 40);
-        if (el.clientWidth < 700)
-          camera.setViewOffset(
-            el.clientWidth,
-            el.clientHeight,
-            0,
-            el.clientHeight * 0.13,
-            el.clientWidth,
-            el.clientHeight,
-          );
-        else {
-          camera.clearViewOffset();
-          if (p.mode === "photo") look.x = -1.5;
-        }
-      }
-      camera.position.lerp(target, 1 - Math.exp(-dt * (inDrive ? 5 : 2)));
-      camera.lookAt(look);
-      camera.updateProjectionMatrix();
-      draw();
-      if (inDrive && now - lastUi > 95) {
-        lastUi = now;
-        const cp = CHECKPOINTS[state.checkpoint];
-        const dist = cp
-          ? Math.round(Math.hypot(state.x - cp.x, state.z - cp.z))
-          : 0;
-        p.onTelemetry({
-          speed: state.speed * 3.6,
-          remaining: Math.max(0, RUN_SECONDS - state.elapsed),
-          checkpoint: state.checkpoint,
-          totalCheckpoints: 4,
-          drift: state.drift,
-          boost: state.boost,
-          heat: state.heat,
-          stars,
-          bust: state.bust,
-          cops: state.cops.length,
-          payout: livePayout(state),
-          respray: state.resprayUsed,
-          message: cp ? `${cp.name} · ${dist} M` : "BACK WHERE YOU BELONG",
-          x: state.x,
-          z: state.z,
-          heading: state.heading,
-        });
-      }
-      if (inDrive && state.finished && !finishedReported) {
-        finishedReported = true;
-        p.onFinish({
-          won: state.won,
-          time: state.elapsed,
-          drift: state.drift,
-          collisions: state.collisions,
-          score: runScore(state),
-          snapshot: capture(),
-          busted: state.busted,
-          stars: starsFor(state.heat),
-          resprayed: state.resprayUsed,
-        });
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    props.current.onReady?.();
-    return () => {
-      dead = true;
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-      el.removeEventListener("pointerdown", dragStart);
-      el.removeEventListener("pointermove", dragMove);
-      el.removeEventListener("pointerup", dragEnd);
-      el.removeEventListener("pointercancel", dragEnd);
-      window.removeEventListener("keydown", keyDown);
-      window.removeEventListener("keyup", keyUp);
-      window.removeEventListener("blur", blur);
-      props.current.captureRef.current = null;
-      const geometries = new Set<THREE.BufferGeometry>(),
-        mats = new Set<THREE.Material>(),
-        textures = new Set<THREE.Texture>();
-      scene.traverse((obj) => {
-        const m = obj as THREE.Mesh;
-        if (m.geometry) geometries.add(m.geometry);
-        if (m.material)
-          (Array.isArray(m.material) ? m.material : [m.material]).forEach(
-            (mat) => {
-              mats.add(mat);
-              Object.values(mat).forEach((v) => {
-                if (v instanceof THREE.Texture) textures.add(v);
-              });
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+        renderer.setClearColor("#d9798a");
+        if (import.meta.env.DEV)
+            (window as RenderDebugWindow).__sdRender = () => ({ ...renderer.info.render });
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFShadowMap;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.12;
+        el.appendChild(renderer.domElement);
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog("#d9798a", 110, 420);
+        const camera = new THREE.PerspectiveCamera(47, 1, 0.1, 1000);
+        camera.position.set(11, 6, 51);
+        scene.add(new THREE.HemisphereLight("#ffc9a8", "#4b3f78", 2.2));
+        const sun = new THREE.DirectionalLight("#ffb482", 3.0);
+        sun.position.set(-45, 75, -20);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        sun.shadow.camera.left = -70;
+        sun.shadow.camera.right = 70;
+        sun.shadow.camera.top = 70;
+        sun.shadow.camera.bottom = -70;
+        sun.shadow.normalBias = 0.035;
+        sun.shadow.bias = -0.0001;
+        scene.add(sun);
+        scene.add(sun.target);
+        const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 32, 16), new THREE.ShaderMaterial({
+            side: THREE.BackSide,
+            depthWrite: false,
+            uniforms: {
+                top: { value: new THREE.Color("#2a1b5e") },
+                mid: { value: new THREE.Color("#c2457f") },
+                bottom: { value: new THREE.Color("#ff8a5c") },
             },
-          );
-      });
-      textures.forEach((t) => t.dispose());
-      geometries.forEach((g) => g.dispose());
-      mats.forEach((m) => m.dispose());
-      materials.clear();
-      windowMats.length = 0;
-      currentTexture?.dispose();
-      emblemTex?.dispose();
-      boardTex?.dispose();
-      composer.dispose();
-      renderer.dispose();
-      renderer.domElement.remove();
-    };
-  }, []);
-  return (
-    <div
-      ref={host}
-      style={{
-        width: "100%",
-        height: "100%",
-        position: "relative",
-        overflow: "hidden",
-        touchAction: "pan-y",
-      }}
-      aria-label="Interactive 3D coastal car scene"
-    />
-  );
+            vertexShader: "varying vec3 vP; void main(){vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
+            fragmentShader: "varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 bottom; void main(){float t=clamp(normalize(vP).y,0.,1.); vec3 color=mix(bottom,mid,smoothstep(0.,.13,t)); color=mix(color,top,smoothstep(.08,.55,t)); gl_FragColor=vec4(color,1.);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}",
+        }));
+        scene.add(sky);
+        const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(18, 32, 24), new THREE.MeshBasicMaterial({ color: "#ffd08a", fog: false }));
+        sunDisc.position.set(-320, 22, 60);
+        scene.add(sunDisc);
+        const starRandom = seeded(450);
+        const starPositions: number[] = [];
+        for (let i = 0; i < 120; i++) {
+            const az = starRandom() * PI * 2, elevation = 0.3 + starRandom() * 1.15;
+            starPositions.push(Math.cos(az) * Math.cos(elevation) * 640, Math.sin(elevation) * 640, Math.sin(az) * Math.cos(elevation) * 640);
+        }
+        const starGeo = new THREE.BufferGeometry();
+        starGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
+        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: "#e6c7ff", size: 1.1, transparent: true, opacity: 0.45, depthWrite: false, fog: false })));
+        const { pad, line } = buildCity(scene);
+        const { markers, blink, boards, boardMat, defaultBoard, cones } = buildLandmarks(scene);
+        let lastMission = props.current.mission ?? FALLBACK_MISSION;
+        let lastMissionKey = missionKey(lastMission);
+        let missionVisuals = buildMissionVisuals(lastMission);
+        scene.add(missionVisuals.group);
+        const car = makeCar(props.current.paint, "hero");
+        compactCar(car);
+        const arm = buildArm(car);
+        // Crew emblem on the roof: visible from the chase camera the whole run.
+        const emblemMat = new THREE.MeshStandardMaterial({
+            color: "#ffffff",
+            transparent: true,
+            roughness: 0.4,
+            metalness: 0.1,
+            polygonOffset: true,
+            polygonOffsetFactor: -3,
+            polygonOffsetUnits: -3,
+        });
+        const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.86), emblemMat);
+        emblem.rotation.x = -Math.PI / 2 + 0.03;
+        emblem.position.set(0, 1.835, 0.37);
+        emblem.visible = false;
+        car.group.add(emblem);
+        let lastBoard = "", boardTex: THREE.Texture | null = null;
+        let lastEmblem = "", emblemTex: THREE.Texture | null = null;
+        let lastTattoo = "", tattooTex: THREE.Texture | null = null;
+        let boardVersion = 0, emblemVersion = 0, tattooVersion = 0;
+        scene.add(car.group);
+        car.group.position.set(0, 0, 40);
+        const trafficSystem = createTraffic();
+        const traffic = trafficSystem.traffic;
+        trafficSystem.advance(0);
+        const cops = Array.from({ length: 3 }, () => {
+            const c = makeCar("#10161c", "police");
+            c.group.visible = false;
+            return c;
+        });
+        const civilianFleet = createFleet(scene, traffic.map((v) => v.car));
+        const policeFleet = createFleet(scene, cops);
+        // Police helicopter: a searchlight that follows the car at three stars.
+        const heli = new THREE.Group();
+        const heliBody = material("#141a22", 0.5, 0.3);
+        const cabin = new THREE.Mesh(new THREE.CapsuleGeometry(1.1, 2.4, 4, 10), heliBody);
+        cabin.rotation.x = PI / 2;
+        heli.add(cabin);
+        cube(heli, 0.35, 0.35, 4.6, 0, 0.2, 3.4, heliBody);
+        cube(heli, 0.1, 1.2, 0.8, 0, 0.7, 5.6, heliBody);
+        const rotor = cube(heli, 9, 0.06, 0.32, 0, 1.35, 0, material("#0a0d12", 0.6));
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), new THREE.MeshBasicMaterial({ color: "#ff3030" }));
+        beacon.position.set(0, -0.9, -0.6);
+        heli.add(beacon);
+        heli.visible = false;
+        scene.add(heli);
+        const searchlight = new THREE.Mesh(new THREE.ConeGeometry(3.4, 24, 28, 1, true), new THREE.MeshBasicMaterial({
+            color: "#fff4d0",
+            alphaMap: falloffTexture("beam"),
+            transparent: true,
+            opacity: 0.07,
+            fog: false,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        }));
+        searchlight.visible = false;
+        scene.add(searchlight);
+        const spot = new THREE.Mesh(new THREE.CircleGeometry(4.8, 40), new THREE.MeshBasicMaterial({
+            color: "#fff1c2",
+            alphaMap: falloffTexture("radial"),
+            transparent: true,
+            opacity: 0.42,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        }));
+        spot.rotation.x = -PI / 2;
+        spot.visible = false;
+        scene.add(spot);
+        const dustGeo = new THREE.BufferGeometry();
+        const dustPos = new Float32Array(80 * 3);
+        const dustLife = new Float32Array(80);
+        const dustRandom = seeded(970);
+        for (let i = 0; i < 80; i++)
+            dustPos[i * 3 + 1] = -100;
+        dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+        const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+            size: 0.35,
+            color: "#d9d0b0",
+            transparent: true,
+            opacity: 0.5,
+            depthWrite: false,
+        }));
+        dust.frustumCulled = false;
+        scene.add(dust);
+        let dustCursor = 0;
+        let state = createDriveState(lastMission), lastRun = props.current.runId, lastMode = props.current.mode, lastTime = performance.now(), raf = 0, dead = false, finishedReported = false, lastUi = 0, textureVersion = 0, lastWrap = "", lastPaint = "", lastGlow: string | null | undefined = undefined, currentTexture: THREE.Texture | null = null, orbit = 0, dragAngle = 0, dragX: number | null = null;
+        const target = new THREE.Vector3(), look = new THREE.Vector3();
+        const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const dragStart = (e: PointerEvent) => {
+            if (props.current.mode === "drive")
+                return;
+            dragX = e.clientX;
+            el.setPointerCapture(e.pointerId);
+        };
+        const dragMove = (e: PointerEvent) => {
+            if (dragX === null)
+                return;
+            dragAngle -= (e.clientX - dragX) * 0.008;
+            dragX = e.clientX;
+        };
+        const dragEnd = () => {
+            dragX = null;
+        };
+        el.addEventListener("pointerdown", dragStart);
+        el.addEventListener("pointermove", dragMove);
+        el.addEventListener("pointerup", dragEnd);
+        el.addEventListener("pointercancel", dragEnd);
+        let bloomOn = el.clientWidth >= 700 && !reduced;
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.48, 0.45, 1.05);
+        composer.addPass(bloom);
+        composer.addPass(new OutputPass());
+        const draw = () => bloomOn ? composer.render() : renderer.render(scene, camera);
+        const resize = () => {
+            const w = el.clientWidth, h = el.clientHeight;
+            if (!w || !h)
+                return;
+            bloomOn = w >= 700 && !reduced;
+            renderer.setSize(w, h, false);
+            composer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        };
+        const observer = new ResizeObserver(resize);
+        observer.observe(el);
+        resize();
+        const keys = (down: boolean) => (e: KeyboardEvent) => {
+            if (down && (props.current.mode !== "drive" || props.current.paused))
+                return;
+            const key = e.key.toLowerCase(), c = props.current.controls.current;
+            const map: Record<string, keyof DriveControls> = {
+                w: "gas",
+                arrowup: "gas",
+                s: "brake",
+                arrowdown: "brake",
+                a: "left",
+                arrowleft: "left",
+                d: "right",
+                arrowright: "right",
+                shift: "boost",
+                " ": "drift",
+            };
+            if (map[key]) {
+                e.preventDefault();
+                c[map[key]] = down;
+            }
+        };
+        const keyDown = keys(true), keyUp = keys(false);
+        const blur = () => Object.keys(props.current.controls.current).forEach((k) => (props.current.controls.current[k as keyof DriveControls] = false));
+        window.addEventListener("keydown", keyDown);
+        window.addEventListener("keyup", keyUp);
+        window.addEventListener("blur", blur);
+        const capture = () => {
+            draw();
+            return renderer.domElement.toDataURL("image/png");
+        };
+        // A fixed "security camera" frame of the car, rendered and presented in the
+        // same task so the player never sees the cut.
+        const cctv = () => {
+            const pos = camera.position.clone(), quat = camera.quaternion.clone(), fov = camera.fov;
+            const view = camera.view ? { ...camera.view } : null;
+            camera.clearViewOffset();
+            const nearest = landmarks("camera").reduce((best, l) => Math.hypot(l.x - state.x, l.z - state.z) < Math.hypot(best.x - state.x, best.z - state.z) ? l : best);
+            if (state.wantedReason === "camera")
+                camera.position.copy(cameraPole(nearest));
+            else
+                camera.position.set(state.x + 7.5, 5.6, state.z - 8.5);
+            camera.lookAt(state.x, 0.9, state.z);
+            camera.fov = 40;
+            camera.updateProjectionMatrix();
+            draw();
+            const url = renderer.domElement.toDataURL("image/jpeg", 0.86);
+            camera.position.copy(pos);
+            camera.quaternion.copy(quat);
+            camera.fov = fov;
+            if (view?.enabled)
+                camera.setViewOffset(view.fullWidth, view.fullHeight, view.offsetX, view.offsetY, view.width, view.height);
+            camera.updateProjectionMatrix();
+            draw();
+            return url;
+        };
+        const captureRef = props.current.captureRef, apiRef = props.current.apiRef;
+        captureRef.current = capture;
+        if (apiRef)
+            apiRef.current = {
+                respray: (changed) => {
+                    const r = applyRespray(state, changed);
+                    state = r.state;
+                    return { cleared: r.cleared, remaining: r.remaining };
+                },
+                teleport: import.meta.env.DEV
+                    ? (x, z, heading) => {
+                        const trail = Array.from({ length: 80 }, (_, i) => {
+                            const back = (79 - i) * 1.6;
+                            return {
+                                x: x - Math.sin(heading) * back,
+                                z: z + Math.cos(heading) * back,
+                                d: i * 1.6,
+                            };
+                        });
+                        state = { ...state, x, z, heading, trail, odo: trail[trail.length - 1].d };
+                        missionVisuals.ribbonTime = -1;
+                    }
+                    : undefined,
+            };
+        const tick = (now: number) => {
+            if (dead)
+                return;
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+            const p = props.current;
+            if (p.runId !== lastRun) {
+                state = createDriveState(p.mission ?? FALLBACK_MISSION);
+                lastRun = p.runId;
+                finishedReported = false;
+                dustLife.fill(0);
+                missionVisuals.ribbonTime = -1;
+                missionVisuals.lastCheckpoint = -1;
+                camera.position.set(START.x, 6, START.z + 12);
+            }
+            // The mission prop is only read when a run (re)starts; everything the
+            // player sees and the HUD reads follows the mission the run is actually
+            // using, so a mid-run prop change can never desync gates and checkpoints.
+            const mission = state.mission;
+            // Rebuild only when the mission's content changes, so a parent that
+            // recreates an equal Mission object each render doesn't thrash the GPU.
+            if (mission !== lastMission) {
+                const key = missionKey(mission);
+                if (key !== lastMissionKey) {
+                    scene.remove(missionVisuals.group);
+                    disposeTree(missionVisuals.group);
+                    missionVisuals.group.clear();
+                    missionVisuals = buildMissionVisuals(mission);
+                    scene.add(missionVisuals.group);
+                    lastMissionKey = key;
+                }
+                lastMission = mission;
+            }
+            if (p.paused && p.mode !== "drive") {
+                raf = requestAnimationFrame(tick);
+                return;
+            }
+            if ((p.billboardUrl ?? "") !== lastBoard) {
+                lastBoard = p.billboardUrl ?? "";
+                const version = ++boardVersion;
+                boardTex?.dispose();
+                boardTex = null;
+                boardMat.map = defaultBoard;
+                boardMat.needsUpdate = true;
+                if (lastBoard)
+                    new THREE.TextureLoader().load(lastBoard, (tex) => {
+                        if (dead || version !== boardVersion)
+                            return tex.dispose();
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        boardTex = tex;
+                        boardMat.map = tex;
+                        boardMat.needsUpdate = true;
+                    });
+            }
+            boards.visible = p.mode === "drive";
+            if ((p.emblemUrl ?? "") !== lastEmblem) {
+                lastEmblem = p.emblemUrl ?? "";
+                const version = ++emblemVersion;
+                emblem.visible = false;
+                emblemTex?.dispose();
+                emblemTex = null;
+                emblemMat.map = null;
+                emblemMat.needsUpdate = true;
+                if (lastEmblem)
+                    new THREE.TextureLoader().load(lastEmblem, (tex) => {
+                        if (dead || version !== emblemVersion)
+                            return tex.dispose();
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        emblemTex = tex;
+                        emblemMat.map = tex;
+                        emblemMat.needsUpdate = true;
+                        emblem.visible = true;
+                    });
+            }
+            if ((p.tattooUrl ?? "") !== lastTattoo) {
+                lastTattoo = p.tattooUrl ?? "";
+                const version = ++tattooVersion;
+                tattooTex?.dispose();
+                tattooTex = null;
+                arm.material.map = null;
+                arm.material.color.set("#c98d6a");
+                arm.material.needsUpdate = true;
+                if (lastTattoo)
+                    new THREE.TextureLoader().load(lastTattoo, (tex) => {
+                        if (dead || version !== tattooVersion)
+                            return tex.dispose();
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+                        tattooTex = tex;
+                        arm.material.map = tex;
+                        arm.material.color.set("#ffffff");
+                        arm.material.needsUpdate = true;
+                    });
+            }
+            arm.group.visible = p.mode === "drive" || p.mode === "photo" || !!p.tattooUrl;
+            if (p.underglow !== lastGlow) {
+                lastGlow = p.underglow;
+                car.setUnderglow(p.underglow ?? null);
+            }
+            if (p.paint !== lastPaint) {
+                lastPaint = p.paint;
+                car.body.color.set(p.paint);
+            }
+            if (p.wrapUrl !== lastWrap) {
+                lastWrap = p.wrapUrl;
+                const ver = ++textureVersion;
+                if (!p.wrapUrl) {
+                    currentTexture?.dispose();
+                    currentTexture = null;
+                    car.wrap.map = null;
+                    car.wrap.needsUpdate = true;
+                }
+                else
+                    new THREE.TextureLoader().load(p.wrapUrl, (tex) => {
+                        if (dead || ver !== textureVersion) {
+                            tex.dispose();
+                            return;
+                        }
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+                        currentTexture?.dispose();
+                        currentTexture = tex;
+                        car.wrap.map = tex;
+                        car.wrap.needsUpdate = true;
+                    }, undefined, () => {
+                        if (!dead && ver === textureVersion)
+                            props.current.onError?.("The livery texture could not load. Reopen the garage and try again.");
+                    });
+            }
+            if (p.mode !== lastMode) {
+                lastMode = p.mode;
+                blur();
+                if (p.mode !== "drive") {
+                    car.group.position.set(0, 0, 40);
+                    car.group.rotation.set(0, 0, 0);
+                    orbit = 0;
+                }
+            }
+            const advancing = p.mode === "drive" && !p.paused && !state.finished;
+            if (advancing) {
+                state = stepDrive(state, {
+                    ...p.controls.current,
+                    gas: p.controls.current.gas ||
+                        Boolean(p.autoThrottle && !p.controls.current.brake),
+                }, dt);
+                car.setBrake(Boolean(p.controls.current.brake));
+                car.group.position.set(state.x, 0.025, state.z);
+                car.group.rotation.y = -state.heading;
+                car.group.rotation.z = THREE.MathUtils.lerp(car.group.rotation.z, (p.controls.current.left ? 1 : p.controls.current.right ? -1 : 0) *
+                    Math.min(0.06, state.speed * 0.003), 0.12);
+                for (const w of car.wheels)
+                    w.rotation.x -= (state.speed * dt) / 0.6;
+                for (const e of state.events)
+                    p.onEvent?.(e, e === "wanted" ? cctv() : undefined);
+                if ((p.controls.current.drift || p.controls.current.brake) &&
+                    (p.controls.current.left || p.controls.current.right) &&
+                    state.speed > 9) {
+                    for (let i = 0; i < 2; i++) {
+                        const particle = dustCursor++ % 80, n = particle * 3;
+                        dustLife[particle] = 0.8;
+                        dustPos[n] = state.x + (dustRandom() - 0.5) * 3;
+                        dustPos[n + 1] = 0.3 + dustRandom();
+                        dustPos[n + 2] = state.z + Math.cos(state.heading) * 2;
+                    }
+                    dustGeo.attributes.position.needsUpdate = true;
+                }
+            }
+            const inDrive = p.mode === "drive";
+            pad.visible = !inDrive;
+            line.visible = !inDrive;
+            for (let i = 0; i < dustLife.length; i++) {
+                if (advancing)
+                    dustLife[i] = Math.max(0, dustLife[i] - dt);
+                if (dustLife[i] === 0)
+                    dustPos[i * 3 + 1] = -100;
+                else if (advancing)
+                    dustPos[i * 3 + 1] += dt * 0.7;
+            }
+            dustGeo.attributes.position.needsUpdate = true;
+            dust.visible = inDrive && dustLife.some((life) => life > 0);
+            const t = now / 1000;
+            const stars = starsFor(state.heat);
+            missionVisuals.group.visible = inDrive;
+            missionVisuals.ribbon.visible = inDrive && !state.finished;
+            if (state.checkpoint !== missionVisuals.lastCheckpoint || t - missionVisuals.ribbonTime >= 0.1 || missionVisuals.ribbonTime < 0) {
+                updateRibbon(missionVisuals, mission, state.checkpoint, state.x, state.z);
+                missionVisuals.lastCheckpoint = state.checkpoint;
+                missionVisuals.ribbonTime = t;
+            }
+            if (advancing)
+                missionVisuals.texture.offset.x -= dt * 1.6;
+            for (let i = 0; i < missionVisuals.gates.length; i++) {
+                const gate = missionVisuals.gates[i], current = i === state.checkpoint;
+                gate.group.visible = !state.finished && i >= state.checkpoint && i <= state.checkpoint + 2;
+                gate.group.scale.setScalar(current ? 1 : 0.6);
+                gate.mat.opacity = current ? 0.9 : 0.25;
+                gate.curtain.visible = current;
+            }
+            const checkpoint = mission.checkpoints[state.checkpoint];
+            missionVisuals.currentRing.visible = !!checkpoint && !state.finished;
+            if (checkpoint) {
+                missionVisuals.currentRing.position.set(checkpoint.x, 0.145, checkpoint.z);
+                missionVisuals.currentRing.scale.setScalar(1 + Math.sin(t * 3) * 0.08);
+            }
+            for (const stash of missionVisuals.stashes) {
+                stash.anchor.visible = !state.collected.includes(stash.id);
+                stash.bag.position.y = 1.9 + Math.sin(t * 2.5) * 0.25;
+                stash.bag.rotation.y = t * 1.4;
+            }
+            for (const cone of cones) {
+                const d = inDrive ? Math.hypot(state.x - cone.x, state.z - cone.z) : Infinity;
+                cone.mat.opacity = CONE_OPACITY * THREE.MathUtils.smoothstep(d, 18, 40);
+            }
+            blink.color.set("#ff3030").multiplyScalar(Math.sin(t * 5) > 0 ? 4 : 0.25);
+            for (const marker of markers) {
+                marker.group.visible = inDrive && !state.resprayUsed && state.heat > 0;
+                if (marker.group.visible) {
+                    marker.beam.scale.y = 1 + Math.sin(t * 3) * 0.12;
+                    marker.group.rotation.y = t * 0.4;
+                }
+            }
+            for (let i = 0; i < cops.length; i++) {
+                const cop = state.cops[i];
+                const c = cops[i];
+                c.group.visible = inDrive && Boolean(cop);
+                if (!cop || !inDrive)
+                    continue;
+                const pose = copPose(state, cop);
+                const side = i === 0 ? 0 : i === 1 ? 3.6 : -3.6;
+                c.group.position.set(pose.x + Math.cos(pose.heading) * side, 0.02, pose.z + Math.sin(pose.heading) * side);
+                c.group.rotation.y = -pose.heading;
+                c.setSiren(t + i * 0.37);
+                if (advancing)
+                    for (const w of c.wheels)
+                        w.rotation.x -= (30 * dt) / 0.6;
+            }
+            const heliOn = inDrive && stars >= 3 && !state.finished;
+            heli.visible = searchlight.visible = spot.visible = heliOn;
+            if (heliOn) {
+                const hx = state.x + Math.sin(t * 0.5) * 9, hz = state.z + Math.cos(t * 0.5) * 9;
+                heli.position.set(hx, 24, hz);
+                heli.rotation.y = -t * 0.5 + PI / 2;
+                rotor.rotation.y = t * 38;
+                beacon.visible = Math.sin(t * 9) > 0;
+                const sx = state.x + Math.sin(state.heading) * 2, sz = state.z - Math.cos(state.heading) * 2;
+                spot.position.set(sx, 0.16, sz);
+                searchlight.position.set((hx + sx) / 2, 12, (hz + sz) / 2);
+                searchlight.lookAt(sx, 0, sz);
+                searchlight.rotateX(-PI / 2);
+            }
+            trafficSystem.advance(advancing ? dt : 0);
+            for (const vehicle of traffic) {
+                vehicle.car.group.visible = inDrive;
+                const position = vehicle.car.group.position;
+                if (advancing && !state.finished && state.collisionCooldown <= 0 && Math.hypot(state.x - position.x, state.z - position.z) < 3.5) {
+                    state.speed *= 0.55;
+                    state.collisions++;
+                    state.collisionCooldown = 1;
+                    if (state.wantedTriggered && state.heat > 0)
+                        state.heat = Math.min(100, state.heat + 5);
+                }
+            }
+            civilianFleet.sync();
+            policeFleet.sync();
+            if (inDrive) {
+                target.set(state.x - Math.sin(state.heading) * 9.5, 6.6, state.z + Math.cos(state.heading) * 9.5);
+                look.set(state.x + Math.sin(state.heading) * 8, 1, state.z - Math.cos(state.heading) * 8);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, p.controls.current.boost && state.speed > 25 ? 60 : 53, 0.04);
+                camera.clearViewOffset();
+                sun.position.set(state.x - 45, 75, state.z - 20);
+                sun.target.position.set(state.x, 0, state.z);
+            }
+            else {
+                if (!p.paused && !reduced)
+                    orbit += dt * 0.065;
+                const a = 2.06 + Math.sin(orbit) * 0.15 + dragAngle;
+                const distance = el.clientWidth < 700 ? 22 : 12.7;
+                target.set(Math.sin(a) * distance, el.clientWidth < 700 ? 7.5 : 5.2, 40 + Math.cos(a) * distance);
+                look.set(0, 1.0, 40);
+                camera.fov = 47;
+                sun.position.set(-45, 75, 20);
+                sun.target.position.set(0, 0, 40);
+                if (el.clientWidth < 700)
+                    camera.setViewOffset(el.clientWidth, el.clientHeight, 0, el.clientHeight * 0.13, el.clientWidth, el.clientHeight);
+                else {
+                    camera.clearViewOffset();
+                    if (p.mode === "photo")
+                        look.x = -1.5;
+                }
+            }
+            camera.position.lerp(target, 1 - Math.exp(-dt * (inDrive ? 5 : 2)));
+            camera.lookAt(look);
+            camera.updateProjectionMatrix();
+            missionVisuals.destinationSign.quaternion.copy(camera.quaternion);
+            draw();
+            if (inDrive && now - lastUi > 95) {
+                lastUi = now;
+                const cp = mission.checkpoints[state.checkpoint];
+                const dist = cp
+                    ? Math.round(Math.hypot(state.x - cp.x, state.z - cp.z))
+                    : 0;
+                p.onTelemetry({
+                    speed: state.speed * 3.6,
+                    remaining: Math.max(0, state.limit - state.elapsed),
+                    checkpoint: state.checkpoint,
+                    totalCheckpoints: mission.checkpoints.length,
+                    drift: state.drift,
+                    boost: state.boost,
+                    heat: state.heat,
+                    stars,
+                    bust: state.bust,
+                    cops: state.cops.length,
+                    payout: livePayout(state),
+                    respray: state.resprayUsed,
+                    message: cp ? `${cp.name.toUpperCase()} · ${dist} M` : "BACK WHERE YOU BELONG",
+                    x: state.x,
+                    z: state.z,
+                    heading: state.heading,
+                    turn: nextTurn(mission, state.checkpoint, state.x, state.z),
+                    stashes: state.collected.length,
+                    stashTotal: mission.stashes.length,
+                    limit: state.limit,
+                });
+            }
+            if (inDrive && state.finished && !finishedReported) {
+                finishedReported = true;
+                p.onFinish({
+                    won: state.won,
+                    time: state.elapsed,
+                    drift: state.drift,
+                    collisions: state.collisions,
+                    score: runScore(state),
+                    snapshot: capture(),
+                    busted: state.busted,
+                    stars: starsFor(state.heat),
+                    resprayed: state.resprayUsed,
+                });
+            }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        props.current.onReady?.();
+        return () => {
+            dead = true;
+            cancelAnimationFrame(raf);
+            observer.disconnect();
+            el.removeEventListener("pointerdown", dragStart);
+            el.removeEventListener("pointermove", dragMove);
+            el.removeEventListener("pointerup", dragEnd);
+            el.removeEventListener("pointercancel", dragEnd);
+            window.removeEventListener("keydown", keyDown);
+            window.removeEventListener("keyup", keyUp);
+            window.removeEventListener("blur", blur);
+            captureRef.current = null;
+            if (apiRef)
+                apiRef.current = null;
+            if (import.meta.env.DEV)
+                delete (window as RenderDebugWindow).__sdRender;
+            disposeTree(scene);
+            civilianFleet.dispose();
+            policeFleet.dispose();
+            car.wrap.dispose();
+            currentTexture?.dispose();
+            emblemTex?.dispose();
+            boardTex?.dispose();
+            defaultBoard.dispose();
+            tattooTex?.dispose();
+            for (const pass of composer.passes)
+                pass.dispose();
+            composer.dispose();
+            renderer.dispose();
+            renderer.domElement.remove();
+        };
+    }, []);
+    return (<div ref={host} style={{
+            width: "100%",
+            height: "100%",
+            position: "relative",
+            overflow: "hidden",
+            touchAction: "pan-y",
+        }} aria-label="Interactive 3D coastal car scene"/>);
 }

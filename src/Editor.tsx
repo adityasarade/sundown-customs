@@ -16,6 +16,81 @@ import {
 import { labelEditorActions } from "./editor-accessibility";
 import { judgeEditorSave } from "./editor-gate";
 import { paintChange } from "./paint-diff";
+type Copy = {
+  back: string;
+  eyebrow: string;
+  title: string;
+  intro: string;
+  tips: [string, string, string];
+  foot: string;
+  loading: string;
+};
+const COPY: Record<EditorKind, Copy> = {
+  wrap: {
+    back: "Back to garage",
+    eyebrow: "01 / THE PAINT BOOTH",
+    title: "Leave your mark.",
+    intro: "Your decals are already on. Tag your name, spray a stripe, stick on more. Fit the wrap to put it on the car.",
+    tips: ["Tag → your crew name", "Spray can → a signature stripe", "Fit the wrap"],
+    foot: "Your saved pixels become the car’s hood and side panels. Edits stay in your browser.",
+    loading: "Opening the paint booth…",
+  },
+  emblem: {
+    back: "Back to garage",
+    eyebrow: "CREW EMBLEM CREATOR",
+    title: "Rep your crew.",
+    intro: "Your crew emblem rides on the roof of your car, in your HUD, on BAYFEED and on Bay 9 News. Stack symbols, badge shapes and a crew name.",
+    tips: ["Symbols → stack a mascot", "Crew name → your tag", "Rep the crew"],
+    foot: "The saved emblem becomes a texture on your roof. Edits stay in your browser.",
+    loading: "Opening the emblem creator…",
+  },
+  plan: {
+    back: "Back to garage",
+    eyebrow: "02 / THE PLAN · NICO’S MAP",
+    title: "Draw the getaway.",
+    intro: "This map is the mission. Draw a line from START to a drop, circle stash crates in yellow, and avoid the red cameras. Your saved pixels become the GPS route, the checkpoints and the pickups.",
+    tips: ["Route marker → START to a gold drop", "Circle a crate in YELLOW → cash", "Lock the plan"],
+    foot: "We read your saved ink: route pixels snap to the nearest roads; yellow rings claim crates.",
+    loading: "Unrolling Nico’s map…",
+  },
+  ink: {
+    back: "Back to the parlor",
+    eyebrow: "INK & IRON · TATTOO PARLOR",
+    title: "Make it permanent.",
+    intro: "Your flash is stencilled on. Add linework with the needle, a name in script, a little shading. It rides on your arm out the driver’s window — and on your mugshot if Bay PD ever catches you.",
+    tips: ["Needle → your own linework", "Script → a name that matters", "Ink it"],
+    foot: "The saved skin becomes your driver’s arm texture in the 3D car.",
+    loading: "Warming up the machine…",
+  },
+  respray: {
+    back: "Drive off unchanged",
+    eyebrow: "SPRAY & PRAY",
+    title: "Lose the heat.",
+    intro: "Bay PD has a description of this exact paint. Repaint it — every 8% of the livery you change shakes off one star. The clock is stopped.",
+    tips: ["Kit or Instant respray → big change, fast", "Cover-up / Spray can → hide the old paint", "Respray & go"],
+    foot: "We compare your saved pixels against the paint the cops saw. Bigger change, fewer stars.",
+    loading: "Opening the respray booth…",
+  },
+  hijack: {
+    back: "Abort the hijack",
+    eyebrow: "SIGNAL HIJACK · BAY 9 LIVE FEED",
+    title: "Own the airwaves.",
+    intro: "You’re patched into Bay 9’s live frame. Deface the anchor, rewrite the headline, slap your crew on it. Whatever you save goes out to every screen in Solana Bay.",
+    tips: ["Deface → draw on the broadcast", "Your message → a new headline", "GO LIVE"],
+    foot: "Takeover strength is the share of the frame you changed. More chaos, more viewers.",
+    loading: "Patching into the Bay 9 uplink…",
+  },
+  photo: {
+    back: "Back to photo",
+    eyebrow: "SNAPPIX · DARKROOM",
+    title: "Make it post-worthy.",
+    intro: "Your actual 3D shot. Frame it up, grade it, add a border and a caption — then post it to BAYFEED.",
+    tips: ["Frame up → crop the shot", "Borders → a Snappix frame", "Post to BAYFEED"],
+    foot: "Finish your photograph, then post it. Edits stay in your browser.",
+    loading: "Opening Snappix…",
+  },
+};
+const METERED: EditorKind[] = ["respray", "hijack"];
 export default function Editor({
   source,
   onSave,
@@ -32,6 +107,7 @@ export default function Editor({
   stars?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const copy = COPY[kind];
   const ref = useRef<ImageEditorRef>(null),
     baseline = useRef<string | null>(null),
     dirty = useRef(false),
@@ -43,7 +119,7 @@ export default function Editor({
     [live, setLive] = useState(0),
     [pending, setPending] = useState(false);
   useEffect(() => {
-    if (kind !== "respray") return;
+    if (!METERED.includes(kind)) return;
     let busy = false;
     const id = setInterval(async () => {
       const editor = ref.current?.editor;
@@ -138,44 +214,37 @@ export default function Editor({
     <section className={`editor-screen editor-${kind}`}>
       <div className="editor-heading">
         <button className="icon-text" onClick={onCancel}>
-          <ArrowLeft size={16} />{" "}
-          {kind === "wrap" || kind === "emblem"
-            ? "Back to garage"
-            : kind === "respray"
-              ? "Drive off unchanged"
-              : "Back to photo"}
+          <ArrowLeft size={16} /> {copy.back}
         </button>
         <span className="eyebrow">
-          {kind === "emblem"
-            ? "CREW EMBLEM CREATOR"
-            : kind === "wrap"
-            ? "02 / THE PAINT BOOTH"
-            : kind === "respray"
-              ? `SPRAY & PRAY · ${"★".repeat(stars)}${"☆".repeat(Math.max(0, 5 - stars))}`
-              : "SNAPPIX · DARKROOM"}
+          {copy.eyebrow}
+          {kind === "respray" &&
+            ` · ${"★".repeat(stars)}${"☆".repeat(Math.max(0, 5 - stars))}`}
         </span>
         <span className="editor-credit">Powered by Unlayer</span>
       </div>
       <div className="editor-intro">
-        <h2>
-          {kind === "emblem"
-            ? "Rep your crew."
-            : kind === "wrap"
-            ? "Leave your mark."
-            : kind === "respray"
-              ? "Lose the heat."
-              : "Make it post-worthy."}
-        </h2>
-        <p>
-          {kind === "emblem"
-            ? "Your crew emblem rides on the roof of your car, next to your name on BAYFEED, and on Bay 9 News. Stack symbols, shapes and a crew name, then Rep the crew."
-            : kind === "wrap"
-            ? "Your decals are already on. Tag your name, spray a stripe, stick on more. Fit the wrap to put it on the car."
-            : kind === "respray"
-              ? "Bay PD has a description of this exact paint. Repaint it — every 8% of the livery you change shakes off one star. The clock is stopped."
-              : "Your actual 3D shot. Frame it up, grade it, add a border and a caption — then post it to BAYFEED."}
-        </p>
+        <h2>{copy.title}</h2>
+        <p>{copy.intro}</p>
       </div>
+      {kind === "hijack" && (
+        <div className="respray-meter hijack-meter" role="status">
+          <span>
+            SIGNAL TAKEOVER{" "}
+            <b>{pending ? "…" : `${Math.round(live * 100)}%`}</b>
+          </span>
+          <div className="respray-bar">
+            <i style={{ width: `${Math.min(100, live * 160)}%` }} />
+          </div>
+          <span className="respray-stars">
+            <small>
+              {pending
+                ? "MEASURED WHEN YOU GO LIVE"
+                : `≈ ${Math.round(120 + live * 880)}K VIEWERS`}
+            </small>
+          </span>
+        </div>
+      )}
       {kind === "respray" && (
         <div className="respray-meter" role="status">
           <span>
@@ -219,29 +288,17 @@ export default function Editor({
         </div>
       )}
       <div className="tool-tips">
-        <span>
-          <b>01</b>{" "}
-          {kind === "respray" ? "Kit or Instant respray → big change, fast" : "Tag → your crew name"}
-        </span>
-        <span>
-          <b>02</b>{" "}
-          {kind === "respray" ? "Cover-up / Spray can → hide the old paint" : "Spray can → a signature stripe"}
-        </span>
-        <span>
-          <b>03</b> Save →{" "}
-          {kind === "wrap"
-            ? "Fit the wrap"
-            : kind === "respray"
-              ? "Respray & go"
-              : "Post to BAYFEED"}{" "}
-          <Check size={13} />
-        </span>
+        {copy.tips.map((t, i) => (
+          <span key={t}>
+            <b>0{i + 1}</b> {i === 2 ? <>Save → {t} <Check size={13} /></> : t}
+          </span>
+        ))}
       </div>
       <div className="editor-mount" ref={hostRef}>
         {!ready && !issue && (
           <div className="editor-loading">
             <LoaderCircle className="spin" />
-            <p>Opening the paint booth…</p>
+            <p>{copy.loading}</p>
             <small>Loading the real React Image Editor</small>
           </div>
         )}
@@ -290,12 +347,7 @@ export default function Editor({
       </div>
       <div className="editor-foot" role="status">
         <Sparkles size={14} />
-        {hint ||
-          (kind === "photo"
-            ? "Finish your photograph, then use Save to keep it for your run card. Edits stay in your browser."
-            : kind === "respray"
-              ? "We compare your saved pixels against the paint the cops saw. Bigger change, fewer stars."
-              : "Your saved pixels become the car’s hood and side panels. Edits stay in your browser.")}
+        {hint || copy.foot}
         <span className="portrait-tip">
           Tool settings sit below your canvas. Scroll them for more options.
         </span>

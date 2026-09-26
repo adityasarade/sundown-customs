@@ -1019,3 +1019,19 @@ button.station:hover { color: #fff; }
   -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
 }
 @media (max-width: 700px) { .result-ui { height: 1180px; min-height: 1180px; } }
+
+/* v3 editor contexts */
+.editor-plan { background: linear-gradient(180deg, rgba(10,14,22,.9), rgba(10,14,22,.97)), url("/art/planning.webp") center / cover !important; }
+.editor-ink { background: linear-gradient(180deg, rgba(18,8,16,.9), rgba(18,8,16,.97)), url("/art/parlor.webp") center / cover !important; }
+.editor-hijack { background: linear-gradient(180deg, rgba(8,4,18,.88), rgba(8,4,18,.97)), url("/art/hijack.webp") center / cover !important; }
+.editor-plan .editor-intro h2 { color: var(--gta-gold); font-style: italic; }
+.editor-ink .editor-intro h2 { color: #ff6b6b; font-style: italic; }
+.editor-hijack .editor-intro h2 { color: var(--gta-cyan); font-style: italic; text-shadow: 2px 0 var(--gta-pink), -2px 0 var(--gta-cyan); }
+.editor-plan :is(.editor-intro p, .tool-tips span, .editor-foot, .icon-text, .editor-credit, .editor-heading .eyebrow),
+.editor-ink :is(.editor-intro p, .tool-tips span, .editor-foot, .icon-text, .editor-credit, .editor-heading .eyebrow),
+.editor-hijack :is(.editor-intro p, .tool-tips span, .editor-foot, .icon-text, .editor-credit, .editor-heading .eyebrow) { color: #ece6f7 !important; }
+.editor-plan .tool-tips b { color: var(--gta-gold); }
+.editor-ink .tool-tips b { color: #ff6b6b; }
+.editor-hijack .tool-tips b { color: var(--gta-cyan); }
+.hijack-meter { border-color: rgba(82,232,255,.45); background: rgba(82,232,255,.1); }
+.hijack-meter .respray-bar i { background: linear-gradient(90deg, var(--gta-cyan), var(--gta-pink)); }

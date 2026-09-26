@@ -24,8 +24,10 @@ type HomeProps = {
 
 const slides = [
   { src: "/art/cover.webp", alt: "Orange coupe and Nico at a sunset marina" },
+  { src: "/art/planning.webp", alt: "Heist planning table with a city map and pins" },
   { src: "/art/chase.webp", alt: "Orange coupe drifting away from police" },
   { src: "/art/respray.webp", alt: "Sports car in a neon respray booth" },
+  { src: "/art/hijack.webp", alt: "Pirate broadcast hijack on a rooftop" },
   { src: "/art/anchor.webp", alt: "Bay 9 television news anchor" },
 ];
 
@@ -39,32 +41,50 @@ const jobs = [
   },
   {
     number: "02",
-    title: "GET NOTICED",
-    copy: "Pier cameras. Up to five stars. A helicopter.",
-    image: "/art/chase.webp",
+    title: "DRAW THE PLAN",
+    copy: "Sketch your getaway on Nico’s map. Your ink becomes the GPS, the checkpoints and the cash.",
+    image: "/art/planning.webp",
     position: "center",
   },
   {
     number: "03",
+    title: "GET NOTICED",
+    copy: "Cameras on your route. Up to five stars. A helicopter.",
+    image: "/art/chase.webp",
+    position: "center",
+  },
+  {
+    number: "04",
     title: "SPRAY & PRAY",
     copy: "Repaint mid-chase. Every 8% you change drops a star.",
     image: "/art/respray.webp",
     position: "center",
   },
   {
-    number: "04",
-    title: "MAKE THE NEWS",
-    copy: "Bay 9 airs your actual car. Save the broadcast.",
-    image: "/art/anchor.webp",
-    position: "center 25%",
+    number: "05",
+    title: "INK & IRON",
+    copy: "Design the tattoo your driver wears out the window — and on the mugshot.",
+    image: "/art/parlor.webp",
+    position: "center",
+  },
+  {
+    number: "06",
+    title: "HIJACK BAY 9",
+    copy: "Take over the live news frame. Whatever you draw goes out on every billboard.",
+    image: "/art/hijack.webp",
+    position: "center",
   },
 ];
 
 const tools = [
-  { title: "PAINT BOOTH", detail: "Livery", icon: Paintbrush },
-  { title: "DECAL RACK", detail: "Pre-built symbols", icon: Sparkles },
+  { title: "PAINT BOOTH", detail: "Livery on the 3D car", icon: Paintbrush },
+  { title: "THE PLAN", detail: "Drawn route → mission", icon: Star },
+  { title: "CREW EMBLEM", detail: "Roof, HUD, feed", icon: Sparkles },
   { title: "SPRAY & PRAY", detail: "Mid-chase respray", icon: Image },
-  { title: "SNAPPIX", detail: "Darkroom + frames", icon: Camera },
+  { title: "INK & IRON", detail: "Tattoo on your driver", icon: Paintbrush },
+  { title: "SIGNAL HIJACK", detail: "Air your own news", icon: Radio },
+  { title: "SNAPPIX", detail: "Darkroom + borders", icon: Camera },
+  { title: "DECAL RACK", detail: "Pre-built symbols", icon: Tv },
 ];
 
 export default function Home({ onStart, onSound, sound }: HomeProps) {
@@ -121,7 +141,7 @@ export default function Home({ onStart, onSound, sound }: HomeProps) {
               <span className="h-plate-bolt" />
             </div>
           </div>
-          <p className="h-tagline">Paint it. Get wanted.<br />Repaint it. Make the news.</p>
+          <p className="h-tagline">Paint it. Plan it. Get wanted.<br />Repaint it. Hijack the news.</p>
           <div className="h-wanted" aria-label="Five star wanted level">
             <span className="h-wanted-label">WANTED</span>
             <span className="h-stars">
@@ -219,7 +239,7 @@ export default function Home({ onStart, onSound, sound }: HomeProps) {
           <div className="h-built-copy">
             <span className="h-eyebrow">UNDER THE HOOD</span>
             <h2 className="h-built-title">BUILT WITH <span>UNLAYER</span></h2>
-            <p>One image editor. Four ways to cause trouble.</p>
+            <p>One image editor. Seven ways to cause trouble.</p>
           </div>
           <div className="h-tool-grid">
             {tools.map((tool) => {

@@ -1,6 +1,6 @@
-import { placeName, type Mission, type Point, NODES } from "./city";
+import { placeName, type Mission, type Point, NODES } from "./city.ts";
 
-export type TurnDir = "left" | "right" | "straight" | "arrive";
+export type TurnDir = "left" | "right" | "straight" | "arrive" | "uturn";
 export type Turn = { dir: TurnDir; distance: number; street: string };
 
 const nodeAt = (p: Point) => NODES.find((n) => n.x === p.x && n.z === p.z);
@@ -9,10 +9,22 @@ const nodeAt = (p: Point) => NODES.find((n) => n.x === p.x && n.z === p.z);
  * GTA-style next instruction along the planned route. `checkpoint` is the
  * index of the next checkpoint (checkpoint k sits at route[k + 1]).
  */
-export function nextTurn(mission: Mission, checkpoint: number, x: number, z: number): Turn {
+export function nextTurn(
+  mission: Mission,
+  checkpoint: number,
+  x: number,
+  z: number,
+  heading?: number,
+): Turn {
   const r = mission.route;
   const target = Math.min(checkpoint + 1, r.length - 1);
   let distance = Math.hypot(r[target].x - x, r[target].z - z);
+  if (heading !== undefined && distance > 12) {
+    // Pointing away from the next point: tell the driver to turn around.
+    const want = Math.atan2(r[target].x - x, -(r[target].z - z));
+    const off = Math.abs(Math.atan2(Math.sin(want - heading), Math.cos(want - heading)));
+    if (off > 2.2) return { dir: "uturn", distance: Math.round(distance), street: "" };
+  }
   for (let j = target; j < r.length; j++) {
     if (j > target) distance += Math.hypot(r[j].x - r[j - 1].x, r[j].z - r[j - 1].z);
     if (j === r.length - 1)

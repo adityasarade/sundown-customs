@@ -8,8 +8,9 @@ export type Point = { x: number; z: number };
 export const ROAD_HALF_WIDTH = 13;
 
 /** Grid avenues (x) and streets (z). Every crossing is a node. */
-export const AVENUES = [0, 70, 140, 210] as const;
-export const STREETS = [-175, -100, -25, 50] as const;
+export const BLOCK = 150;
+export const AVENUES = [0, 150, 300, 450] as const;
+export const STREETS = [-400, -250, -100, 50] as const;
 
 export type Node = Point & { id: string };
 export type Edge = { a: string; b: string; length: number };
@@ -39,22 +40,22 @@ export const GARAGE_NODE = "0:50";
 
 export const LANDMARKS: Landmark[] = [
   { id: "garage", kind: "garage", name: "SUNDOWN CUSTOMS", x: 0, z: 50, node: "0:50" },
-  { id: "marina", kind: "drop", name: "MARINA MEET", x: 0, z: -175, node: "0:-175" },
-  { id: "causeway", kind: "drop", name: "CAUSEWAY LOT", x: 210, z: -175, node: "210:-175" },
-  { id: "motel", kind: "drop", name: "PALM MOTEL", x: 210, z: 50, node: "210:50" },
-  { id: "cam-pier", kind: "camera", name: "PIER CAM", x: 0, z: -62 },
-  { id: "cam-market", kind: "camera", name: "MARKET CAM", x: 105, z: -100 },
-  { id: "cam-bridge", kind: "camera", name: "BRIDGE CAM", x: 140, z: 12 },
-  { id: "cam-north", kind: "camera", name: "HARBOR CAM", x: 175, z: -175 },
-  { id: "cam-mid", kind: "camera", name: "PLAZA CAM", x: 70, z: -62 },
-  { id: "spray-east", kind: "respray", name: "SPRAY & PRAY", x: 140, z: -62 },
-  { id: "spray-west", kind: "respray", name: "SPRAY & PRAY 2", x: 35, z: -100 },
-  { id: "stash-1", kind: "stash", name: "CRATE", x: 35, z: -25 },
-  { id: "stash-2", kind: "stash", name: "CRATE", x: 70, z: -138 },
-  { id: "stash-3", kind: "stash", name: "CRATE", x: 175, z: 50 },
-  { id: "stash-4", kind: "stash", name: "CRATE", x: 210, z: -62 },
-  { id: "stash-5", kind: "stash", name: "CRATE", x: 105, z: -175 },
-  { id: "stash-6", kind: "stash", name: "CRATE", x: 140, z: -138 },
+  { id: "marina", kind: "drop", name: "MARINA MEET", x: 0, z: -400, node: "0:-400" },
+  { id: "causeway", kind: "drop", name: "CAUSEWAY LOT", x: 450, z: -400, node: "450:-400" },
+  { id: "motel", kind: "drop", name: "PALM MOTEL", x: 450, z: 50, node: "450:50" },
+  { id: "cam-pier", kind: "camera", name: "PIER CAM", x: 0, z: -175 },
+  { id: "cam-market", kind: "camera", name: "MARKET CAM", x: 225, z: -250 },
+  { id: "cam-bridge", kind: "camera", name: "BRIDGE CAM", x: 300, z: -25 },
+  { id: "cam-north", kind: "camera", name: "HARBOR CAM", x: 375, z: -400 },
+  { id: "cam-mid", kind: "camera", name: "PLAZA CAM", x: 150, z: -175 },
+  { id: "spray-east", kind: "respray", name: "SPRAY & PRAY", x: 300, z: -175 },
+  { id: "spray-west", kind: "respray", name: "SPRAY & PRAY 2", x: 75, z: -250 },
+  { id: "stash-1", kind: "stash", name: "CRATE", x: 75, z: -100 },
+  { id: "stash-2", kind: "stash", name: "CRATE", x: 150, z: -325 },
+  { id: "stash-3", kind: "stash", name: "CRATE", x: 375, z: 50 },
+  { id: "stash-4", kind: "stash", name: "CRATE", x: 450, z: -175 },
+  { id: "stash-5", kind: "stash", name: "CRATE", x: 225, z: -400 },
+  { id: "stash-6", kind: "stash", name: "CRATE", x: 300, z: -325 },
 ];
 export const landmarks = (kind: LandmarkKind) => LANDMARKS.filter((l) => l.kind === kind);
 
@@ -174,10 +175,10 @@ export const MAP = {
   left: 40,
   top: 40,
   size: 880,
-  minX: -60,
-  maxX: 250,
-  minZ: -220,
-  maxZ: 90,
+  minX: -70,
+  maxX: 520,
+  minZ: -470,
+  maxZ: 120,
 } as const;
 const SPAN = MAP.maxX - MAP.minX; // square: maxZ - minZ is the same span
 
@@ -194,6 +195,8 @@ export const mapToWorld = (px: number, py: number): Point => ({
 
 export type Checkpoint = Point & { name: string };
 export type Mission = {
+  /** Where and which way the car starts: facing the first leg of the route. */
+  start: { x: number; z: number; heading: number };
   /** Road polyline from the start to the destination, node to node. */
   route: Point[];
   /** Turn points along the route (excluding the start) ending at the destination. */
@@ -228,7 +231,14 @@ export function missionFromPath(
   extra: Partial<Pick<Mission, "stashes" | "drawnShare" | "notes" | "fromDrawing">> = {},
 ): Mission {
   const pts = path.map(node);
-  const route: Point[] = [{ x: START.x, z: START.z }, ...pts.slice(1).map((p) => ({ x: p.x, z: p.z }))];
+  // Face the first leg: north up the west avenue from the pad, or east along
+  // the garage street from just past the intersection.
+  const first = pts[1] ?? pts[0];
+  const east = first.x > pts[0].x;
+  const start = east
+    ? { x: pts[0].x + 10, z: pts[0].z, heading: Math.PI / 2 }
+    : { x: START.x, z: START.z, heading: 0 };
+  const route: Point[] = [{ x: start.x, z: start.z }, ...pts.slice(1).map((p) => ({ x: p.x, z: p.z }))];
   // Every node on the way is a gate; the last one is the destination.
   const checkpoints: Checkpoint[] = pts.slice(1).map((p, i, all) => ({
     x: p.x,
@@ -240,6 +250,7 @@ export function missionFromPath(
   );
   const length = polylineLength(route);
   return {
+    start,
     route,
     checkpoints,
     destination,
@@ -247,7 +258,7 @@ export function missionFromPath(
     drawnShare: extra.drawnShare ?? 0,
     camerasOnRoute: cams,
     notes: extra.notes ?? [],
-    seconds: Math.round(Math.max(75, length / 16 + 40)),
+    seconds: Math.round(Math.max(60, length / 17 + 30)),
     fromDrawing: extra.fromDrawing ?? false,
   };
 }

@@ -274,10 +274,22 @@ export function makeCar(
   if (variant === "hero") {
     // Headlight spill on the road: reads as light at dusk without blocking the
     // chase camera the way volumetric cones do.
+    const falloff = document.createElement("canvas");
+    falloff.width = falloff.height = 64;
+    const fctx = falloff.getContext("2d");
+    if (fctx) {
+      const g = fctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(0.5, "#9a9a9a");
+      g.addColorStop(1, "#000000");
+      fctx.fillStyle = g;
+      fctx.fillRect(0, 0, 64, 64);
+    }
     const poolMaterial = new THREE.MeshBasicMaterial({
       color: "#ffe2a0",
+      alphaMap: new THREE.CanvasTexture(falloff),
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.3,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
