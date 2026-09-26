@@ -38,3 +38,26 @@ https://sundown-customs.vercel.app
 - Submit the official form and retain its receipt. Use the entrant’s preferred contact email and confirm required form fields directly.
 
 No social post or competition form is sent by this repository.
+
+## Final X post (free account, under 280 characters)
+
+Attach `sundown-customs-trailer.mp4` (57 s, 1280×720, H.264/AAC, 24 MB) from the parent folder.
+
+Option A (273 weighted characters):
+
+    what if the image editor wasn't a feature, it was the controller?
+
+    built a gta vi style heist for @unlayer:
+    draw your getaway, it becomes the gps
+    get 5 stars, repaint mid-chase to lose them
+    hijack the news onto every billboard
+
+    #BuiltWithImageEditor
+    https://sundown-customs.vercel.app
+
+Optional reply:
+
+    7 editor booths, each reskinned with unlayer translations + custom tool icons. spray can, route marker, needle, GO LIVE.
+
+    it's open source, the route drawing is analysed pixel by pixel:
+    https://github.com/adityasarade/sundown-customs
