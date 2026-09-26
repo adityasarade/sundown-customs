@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Check, ChevronRight, Lock, Signal, Star, Target, Wifi, BatteryFull, X } from "lucide-react";
 import "./jobs.css";
@@ -11,6 +12,8 @@ export type JobsProps = {
   objective: string;
   /** Optional close button in the phone header. */
   onClose?: () => void;
+  /** Optional actions pinned under the job list (e.g. replay once complete). */
+  footer?: ReactNode;
 };
 
 const CHIP: Record<JobStatus, string> = {
@@ -37,7 +40,7 @@ function StepIcon({ status, index }: { status: JobStatus; index: number }) {
 }
 
 /** GTA-style phone job list — Nico texts you the heist steps. */
-export default function Jobs({ steps, onSelect, objective, onClose }: JobsProps) {
+export default function Jobs({ steps, onSelect, objective, onClose, footer }: JobsProps) {
   const done = steps.filter((s) => s.status === "done").length;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
   return (
@@ -116,6 +119,7 @@ export default function Jobs({ steps, onSelect, objective, onClose }: JobsProps)
             );
           })}
         </ol>
+        {footer}
         <i className="bp-home" aria-hidden="true" />
       </div>
     </section>

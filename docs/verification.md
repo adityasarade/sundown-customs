@@ -1,5 +1,9 @@
 # Verification
 
+## v3.1 checks — ending, replay, BAYPHONE scroll
+
+- `npm run test:e2e` and `npm run test:e2e:mobile`: 7/7 steps, zero page errors. New step: the BAYPHONE fits the viewport (desktop: phone bottom 878/900) with a scrollable job list; the billboard fly-by visits all five boards and hands off to THE END; **Keep my crew** keeps the livery while resetting every job (0 done, next job highlighted); **Fresh start** (confirmed) removes the livery and replays the intro.
+
 ## v3 "Heist Night" checks (September 26, 2026)
 
 - `npm test`: 86 passing unit tests (city grid and projection, missions and GPS turns incl. U-turn, mission driving/pursuit/respray/stash/timeout rules, pixel map analysis, editor save gate).

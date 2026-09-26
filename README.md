@@ -39,6 +39,10 @@ Station idents and Bay Talk lines use `speechSynthesis`; the engine, pursuit sir
 
 Nico’s BAYPHONE job list exposes the main and optional jobs. The objective pill updates with the next task; contextual help boxes explain the booth, planning, driving, GPS, respray, tattoo, hijack, and photo steps. Loading cards rotate practical tips, and the driving HUD includes the planned GPS card, radar, heat, cash, timer, and current objective.
 
+## Ending and replay
+
+Posting the hijack to the billboards triggers an in-engine fly-by: the camera visits every Bay PD billboard in the 3D city, each now showing your hijacked frame, with a live viewer count and a reactions ticker. It ends on **THE END** — a completion ring, run stats, a gallery of everything you made in the image editor, rolling credits, and a downloadable 1200×1500 "night poster". From there (or from the BAYPHONE once the heist is complete) you can **Play again · keep my crew** — your livery, emblem, plan drawing and tattoo stay as starting points while every job reopens — or **Fresh start · clear everything**, which wipes your creations from this browser and replays Nico's intro.
+
 ## Controls
 
 | Action | Keyboard | Touch |

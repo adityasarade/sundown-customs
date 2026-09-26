@@ -245,6 +245,17 @@ try {
     await page.waitForTimeout(3000);
     await shot("hijack-air-2");
     await page.getByRole("button", { name: /PUT IT ON EVERY BILLBOARD/ }).click();
+    await waitPhase("billboards", 10000);
+    await page.waitForTimeout(1600);
+    await shot("billboards-1");
+    await page.waitForTimeout(3200);
+    await shot("billboards-2");
+    await page.waitForTimeout(3200);
+    await shot("billboards-3");
+    await waitPhase("finale", 20000);
+    await page.waitForTimeout(2500);
+    await shot("finale");
+    await page.getByRole("button", { name: /Back to the garage/ }).click();
     await waitPhase("garage", 10000);
   });
 
@@ -254,6 +265,7 @@ try {
     await waitPhase("parlor");
     await page.waitForTimeout(1500);
     await shot("parlor");
+    await page.getByRole("button", { name: /GET IN THE CHAIR/ }).scrollIntoViewIfNeeded();
     await page.getByRole("button", { name: /GET IN THE CHAIR/ }).click();
     await waitPhase("ink");
     await page.getByRole("button", { name: "Ink it" }).waitFor({ timeout: 40000 });
@@ -286,12 +298,50 @@ try {
     await page.waitForTimeout(3000);
     await shot("bayfeed");
   });
+  await step("BAYPHONE scrolls; replay: keep my crew, then fresh start", async () => {
+    await page.evaluate(() => window.__sd.setPhase("garage"));
+    await waitPhase("garage");
+    await page.waitForTimeout(1200);
+    const list = await page.evaluate(() => {
+      const l = document.querySelector(".garage-jobs .bp-list");
+      const phone = document.querySelector(".garage-jobs").getBoundingClientRect();
+      if (l) l.scrollTop = l.scrollHeight;
+      const last = l?.lastElementChild?.getBoundingClientRect();
+      return { phoneBottom: phone.bottom, vh: innerHeight, lastBottom: last?.bottom ?? 0, scrollable: l ? l.scrollHeight > l.clientHeight : false };
+    });
+    await shot("bayphone-scrolled");
+    console.log(`   phone bottom ${Math.round(list.phoneBottom)}/${list.vh}, last job bottom ${Math.round(list.lastBottom)}, scrollable ${list.scrollable}`);
+    if (!MOBILE && (list.phoneBottom > list.vh + 1 || list.lastBottom > list.vh + 1)) throw new Error("BAYPHONE runs off screen");
+    await page.locator(".bp-footer").getByText("WATCH THE ENDING").click();
+    await waitPhase("finale");
+    await page.getByRole("button", { name: /PLAY AGAIN · KEEP MY CREW/ }).click();
+    await waitPhase("garage");
+    await page.waitForTimeout(1500);
+    const kept = await page.evaluate(() => ({
+      livery: !!document.querySelector(".saved-swatch"),
+      paintNext: !!document.querySelector(".bp-step.bp-next"),
+      done: document.querySelectorAll(".bp-step.bp-done").length,
+    }));
+    await shot("replay-keep");
+    console.log(`   keep → livery kept ${kept.livery}, done jobs ${kept.done}, next job shown ${kept.paintNext}`);
+    if (!kept.livery || kept.done !== 0 || !kept.paintNext) throw new Error("keep-my-crew replay did not reset jobs while keeping the livery");
+    await page.evaluate(() => window.__sd.setPhase("finale"));
+    await waitPhase("finale");
+    await page.getByRole("button", { name: /FRESH START · CLEAR EVERYTHING/ }).click();
+    await page.getByRole("button", { name: /YES, FRESH START/ }).click();
+    await waitPhase("garage");
+    await page.waitForTimeout(1200);
+    const cleared = await page.evaluate(() => ({ livery: !!document.querySelector(".saved-swatch"), intro: !!document.querySelector(".char-intro") }));
+    await shot("replay-clear");
+    console.log(`   clear → livery ${cleared.livery}, intro replayed ${cleared.intro}`);
+    if (cleared.livery) throw new Error("fresh start kept the livery");
+  });
 } catch {
   // reported below
 } finally {
   await releaseAll().catch(() => {});
-  const ok = results.every((r) => r.ok) && results.length === 6 && !errors.length;
-  console.log(`\n${results.filter((r) => r.ok).length}/6 steps passed · page errors: ${errors.length ? errors.join(" | ") : "none"}`);
+  const ok = results.every((r) => r.ok) && results.length === 7 && !errors.length;
+  console.log(`\n${results.filter((r) => r.ok).length}/7 steps passed · page errors: ${errors.length ? errors.join(" | ") : "none"}`);
   await browser.close();
   server?.kill();
   process.exitCode = ok ? 0 : 1;

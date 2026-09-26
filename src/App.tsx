@@ -46,6 +46,8 @@ import News from "./News";
 import PlanLocked from "./PlanLocked";
 import Parlor from "./Parlor";
 import HijackAir from "./HijackAir";
+import BillboardTour from "./BillboardTour";
+import Finale from "./Finale";
 import GpsHud from "./GpsHud";
 import Jobs, { ObjectivePill, type JobStep } from "./Jobs";
 import { renderPlanMap, planFromImages, loadPlanFonts } from "./planmap";
@@ -175,9 +177,12 @@ type Phase =
   | "parlor"
   | "ink"
   | "hijack"
-  | "hijackAir";
+  | "hijackAir"
+  | "billboards"
+  | "finale";
 const EDITOR_PHASES: Phase[] = ["edit", "editPhoto", "respray", "emblem", "plan", "ink", "hijack"];
-const SCREEN_PHASES: Phase[] = ["home", "news", "planLocked", "parlor", "hijackAir"];
+const SCREEN_PHASES: Phase[] = ["home", "news", "planLocked", "parlor", "hijackAir", "finale"];
+type JobId = "paint" | "crew" | "plan" | "ink" | "run" | "hijack";
 type Banner = { id: number; title: string; sub?: string; tone: string };
 type Respray = {
   changed: number;
@@ -308,6 +313,14 @@ function App() {
     [hijackChanged, setHijackChanged] = useState(0),
     [runs, setRuns] = useState(0),
     [runMission, setRunMission] = useState<Mission | null>(null),
+    [starsDropped, setStarsDropped] = useState(0),
+    [done, setDone] = useState<Set<JobId>>(() => {
+      const d = new Set<JobId>();
+      if (load("sundown-wrap", "")) d.add("paint");
+      if (load("sundown-emblem", "")) d.add("crew");
+      if (load("sundown-tattoo", "")) d.add("ink");
+      return d;
+    }),
     [jobsOpen, setJobsOpen] = useState(true);
   useEffect(() => {
     if (tattoo && !tattooCrop) cropTattoo(tattoo).then(setTattooCrop).catch(() => {});
@@ -376,7 +389,12 @@ function App() {
         ? "busted"
         : "failed";
   const onPreview = useCallback((url: string) => setPreview(url), []);
+  const markDone = useCallback(
+    (id: JobId) => setDone((d) => (d.has(id) ? d : new Set(d).add(id))),
+    [],
+  );
   const finish = useCallback((r: RunResult) => {
+    if (r.won) markDone("run");
     setResult(r);
     setPhoto(r.snapshot);
     radio.current?.stinger(r.won);
@@ -389,7 +407,7 @@ function App() {
       } catch {}
       return next;
     });
-  }, []);
+  }, [markDone]);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [phase]);
@@ -498,6 +516,7 @@ function App() {
       remaining: 0,
     };
     setRespray({ changed, ...r, before, after: url });
+    setStarsDropped((n) => n + r.cleared);
     setSaved(url);
     setPreview("");
     try {
@@ -587,6 +606,7 @@ function App() {
     }
   };
   const saveWrap = (url: string) => {
+    markDone("paint");
     setPlaced({});
     setSaved(url);
     setPreview("");
@@ -620,7 +640,7 @@ function App() {
       await loadPlanFonts().catch(() => {});
       const base = planBase || renderPlanMap();
       if (!planBase) setPlanBase(base);
-      setPlanSource(redraw && planUrl ? planUrl : base);
+      setPlanSource((redraw || planUrl) && planUrl ? planUrl : base);
       setPhase("plan");
     } finally {
       setPlanBusy(false);
@@ -632,6 +652,7 @@ function App() {
       const m = await planFromImages(planBase, url);
       if (phaseRef.current !== "plan") return;
       setMission(m);
+      if (m.fromDrawing) markDone("plan");
       setPlanUrl(url);
       setPhase("planLocked");
     } catch {
@@ -671,6 +692,7 @@ function App() {
     if (phaseRef.current !== "hijack") return;
     setHijackChanged(changed);
     setHijackUrl(url);
+    markDone("hijack");
     setPhase("hijackAir");
   };
   const startRun = () => {
@@ -758,23 +780,70 @@ function App() {
     (telemetry as Telemetry & { collected?: string[] }).collected ?? [];
   const painted = !!saved;
   const planned = mission.fromDrawing;
+  const has = (id: JobId) => done.has(id);
   const jobSteps: JobStep[] = [
-    { id: "paint", title: "FRESH PAINT", sub: painted ? "Livery fitted" : "Paint your car in the booth", status: painted ? "done" : "next" },
-    { id: "crew", title: "CREW COLORS", sub: emblem ? "Emblem on the roof" : "Design a crew emblem", status: emblem ? "done" : "optional" },
-    { id: "plan", title: "THE PLAN", sub: planned ? `Route to ${mission.destination.name}` : "Draw your route on Nico’s map", status: planned ? "done" : painted ? "next" : "locked" },
-    { id: "ink", title: "INK & IRON", sub: tattoo ? "Inked" : "Get a tattoo for the job", status: tattoo ? "done" : "optional" },
-    { id: "run", title: "THE LAST DELIVERY", sub: runs ? `${runs} run${runs > 1 ? "s" : ""} so far` : "Deliver the car", status: runs ? "done" : painted && planned ? "next" : painted ? "optional" : "locked" },
-    { id: "hijack", title: "HIJACK BAY 9", sub: hijackUrl ? "You own the airwaves" : "After a run: take over the news", status: hijackUrl ? "done" : result ? "next" : "locked" },
+    { id: "paint", title: "FRESH PAINT", sub: has("paint") ? "Livery fitted" : painted ? "Repaint your car in the booth" : "Paint your car in the booth", status: has("paint") ? "done" : "next" },
+    { id: "crew", title: "CREW COLORS", sub: has("crew") ? "Emblem on the roof" : "Design a crew emblem", status: has("crew") ? "done" : "optional" },
+    { id: "plan", title: "THE PLAN", sub: has("plan") ? `Route to ${mission.destination.name}` : "Draw your route on Nico’s map", status: has("plan") ? "done" : painted ? "next" : "locked" },
+    { id: "ink", title: "INK & IRON", sub: has("ink") ? "Inked" : tattoo ? "Re-ink your tattoo" : "Get a tattoo for the job", status: has("ink") ? "done" : "optional" },
+    { id: "run", title: "THE LAST DELIVERY", sub: has("run") ? `Delivered · ${runs} run${runs === 1 ? "" : "s"}` : "Deliver the car", status: has("run") ? "done" : painted && (has("plan") || planned) ? "next" : painted ? "optional" : "locked" },
+    { id: "hijack", title: "HIJACK BAY 9", sub: has("hijack") ? "You own the airwaves" : "After a run: take over the news", status: has("hijack") ? "done" : result ? "next" : "locked" },
   ];
-  const objective = !painted
+  const heistDone = has("run") && has("hijack");
+  const objective = !has("paint") && !painted
     ? "Paint your car in the booth"
-    : !planned
-      ? "Draw the getaway route on Nico’s map"
-      : !runs
-        ? `Deliver the car to ${mission.destination.name}`
-        : !hijackUrl
-          ? "Hijack Bay 9 — or run it back"
-          : "Solana Bay is yours. Run it back.";
+    : !has("paint")
+      ? "Freshen the paint — or skip straight to the plan"
+      : !has("plan") && !planned
+        ? "Draw the getaway route on Nico’s map"
+        : !has("run")
+          ? `Deliver the car to ${mission.destination.name}`
+          : !has("hijack")
+            ? "Hijack Bay 9 — or run it back"
+            : "Heist complete. Watch the ending or start a new heist.";
+  const viewers = 120000 + hijackChanged * 880000;
+  /** Replay with everything the visitor made kept as starting points. */
+  const newHeistKeep = () => {
+    setDone(new Set());
+    setResult(null);
+    setRespray(null);
+    setWantedShot("");
+    setBillboard("");
+    setPosted(false);
+    setStarsDropped(0);
+    setRunMission(null);
+    setJobsOpen(true);
+    seenTips.current.clear();
+    setPhase("garage");
+    setNotice("New heist. Your crew’s gear is still here — every job is open again.");
+  };
+  /** Wipe the visitor's creations and start from a blank car. */
+  const newHeistClear = () => {
+    for (const k of ["sundown-wrap", "sundown-emblem", "sundown-tattoo", "sundown-glow"])
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    setSaved("");
+    setPreview("");
+    setPlaced({});
+    setEmblem("");
+    setCrewBase(0);
+    setTattoo("");
+    setTattooCrop("");
+    setStencil("");
+    setGlow(null);
+    setMission(defaultMission());
+    setPlanUrl("");
+    setPlanSource("");
+    setHijackUrl("");
+    setHijackFrame("");
+    setHijackChanged(0);
+    setPhoto("");
+    setRuns(0);
+    setIntro(true);
+    newHeistKeep();
+    setNotice("Fresh start. Blank car, blank map. Nico’s waiting.");
+  };
   const selectJob = (id: string) => {
     if (id === "paint") edit();
     else if (id === "crew") setPhase("emblem");
@@ -782,6 +851,7 @@ function App() {
     else if (id === "ink") setPhase("parlor");
     else if (id === "run" && painted) setPhase("brief");
     else if (id === "hijack" && result) void openHijack();
+    else if (id === "hijack" && hijackUrl) setPhase("finale");
     else setNotice(painted ? "That one unlocks after a run." : "Paint the car first — the booth is waiting.");
   };
   const worldVisible =
@@ -794,7 +864,9 @@ function App() {
         >
           <World
             mode={
-              phase === "drive" || phase === "respray"
+              phase === "billboards"
+                ? "tour"
+                : phase === "drive" || phase === "respray"
                 ? "drive"
                 : phase === "result" || phase === "photo"
                   ? "photo"
@@ -845,7 +917,7 @@ function App() {
           )}
         </div>
       )}
-      {!EDITOR_PHASES.includes(phase) && !SCREEN_PHASES.includes(phase) && (
+      {!EDITOR_PHASES.includes(phase) && !SCREEN_PHASES.includes(phase) && phase !== "billboards" && (
         <header className="topbar">
           <button
             className="brand"
@@ -1090,6 +1162,14 @@ function App() {
                 onSelect={selectJob}
                 objective={objective}
                 onClose={() => setJobsOpen(false)}
+                footer={
+                  heistDone ? (
+                    <div className="bp-footer">
+                      <button onClick={() => setPhase("finale")}>WATCH THE ENDING</button>
+                      <button onClick={newHeistKeep}>NEW HEIST</button>
+                    </div>
+                  ) : undefined
+                }
               />
             </div>
           ) : (
@@ -1149,6 +1229,7 @@ function App() {
                 : phase === "ink"
                 ? (url) => {
                     setTattoo(url);
+                    markDone("ink");
                     setTattooCrop("");
                     try {
                       localStorage.setItem("sundown-tattoo", url);
@@ -1161,6 +1242,7 @@ function App() {
                 : phase === "emblem"
                 ? (url) => {
                     setEmblem(url);
+                    markDone("crew");
                     try {
                       localStorage.setItem("sundown-emblem", url);
                     } catch {}
@@ -1322,11 +1404,44 @@ function App() {
           crew={alias || "GHOST"}
           emblem={emblemUrl}
           muted={!sound}
-          onBillboards={() => {
-            setNotice("Every Bay PD billboard now runs your broadcast. Take a drive.");
-            setPhase("garage");
-          }}
+          onBillboards={() => setPhase("billboards")}
           onDone={() => setPhase("garage")}
+        />
+      )}
+      {phase === "billboards" && (
+        <BillboardTour
+          crew={alias || "GHOST"}
+          frame={hijackUrl}
+          viewers={viewers}
+          onDone={() => {
+            radio.current?.stinger(true);
+            setPhase("finale");
+          }}
+        />
+      )}
+      {phase === "finale" && (
+        <Finale
+          alias={alias || "GHOST"}
+          emblem={emblemUrl}
+          livery={baseWrap}
+          plan={planUrl}
+          tattoo={tattooCrop}
+          hijack={hijackUrl}
+          photo={posted ? photo : ""}
+          stats={{
+            best,
+            runs,
+            destination: (runMission ?? mission).destination.name,
+            drawnShare: (runMission ?? mission).drawnShare,
+            starsDropped,
+            viewers,
+            jobsDone: jobSteps.filter((j) => j.status === "done").length,
+            jobsTotal: jobSteps.length,
+            remaining: jobSteps.filter((j) => j.status !== "done").map((j) => j.title),
+          }}
+          onKeep={newHeistKeep}
+          onClear={newHeistClear}
+          onGarage={() => setPhase("garage")}
         />
       )}
       {(phase === "drive" || phase === "respray") && (

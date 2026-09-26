@@ -9,7 +9,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-export type WorldMode = "garage" | "drive" | "photo";
+export type WorldMode = "garage" | "drive" | "photo" | "tour";
 export type Telemetry = {
     speed: number;
     remaining: number;
@@ -301,6 +301,10 @@ function boardPose(l: Landmark) {
     const p = roadside(l, ROAD_HALF_WIDTH + 12);
     return { ...p, rotation: p.avenue ? -PI / 3 : -PI / 7 };
 }
+/** Board poses, in the order the post-hijack fly-by visits them. */
+export const TOUR_SHOT_MS = 2800;
+const TOUR_BOARDS = BOARD_IDS.map((id) => ({ id, ...boardPose(landmarks("camera").find((c) => c.id === id)!) }));
+export const TOUR_BOARD_NAMES = BOARD_IDS.map((id) => landmarks("camera").find((c) => c.id === id)!.name);
 type Footprint = Point & { w: number; d: number };
 const reservedLots: Footprint[] = [
     ...landmarks("respray").map((l) => {
@@ -801,7 +805,7 @@ function buildLandmarks(scene: THREE.Scene) {
     batch.flush(staticGroup);
     mergeStatic(staticGroup);
     const defaultBoard = bayPdPoster();
-    const boardMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(1.25), map: defaultBoard });
+    const boardMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(0.92), map: defaultBoard });
     const boards = new THREE.Group();
     scene.add(boards);
     for (const id of BOARD_IDS) {
@@ -1338,6 +1342,7 @@ export function World(all: WorldProps) {
         dust.frustumCulled = false;
         scene.add(dust);
         let dustCursor = 0;
+        let tourStart = 0, tourShot = -1;
         let state = createDriveState(lastMission), lastRun = props.current.runId, lastMode = props.current.mode, lastTime = performance.now(), raf = 0, dead = false, finishedReported = false, lastUi = 0, textureVersion = 0, lastWrap = "", lastPaint = "", lastGlow: string | null | undefined = undefined, currentTexture: THREE.Texture | null = null, orbit = 0, dragAngle = 0, dragX: number | null = null;
         const target = new THREE.Vector3(), look = new THREE.Vector3();
         const resetChaseCamera = () => {
@@ -1504,7 +1509,7 @@ export function World(all: WorldProps) {
                 }
                 lastMission = mission;
             }
-            if (p.paused && p.mode !== "drive") {
+            if (p.paused && p.mode !== "drive" && p.mode !== "tour") {
                 raf = requestAnimationFrame(tick);
                 return;
             }
@@ -1525,7 +1530,7 @@ export function World(all: WorldProps) {
                         boardMat.needsUpdate = true;
                     });
             }
-            boards.visible = p.mode === "drive";
+            boards.visible = p.mode === "drive" || p.mode === "tour";
             if ((p.emblemUrl ?? "") !== lastEmblem) {
                 lastEmblem = p.emblemUrl ?? "";
                 const version = ++emblemVersion;
@@ -1602,6 +1607,10 @@ export function World(all: WorldProps) {
             }
             if (p.mode !== lastMode) {
                 lastMode = p.mode;
+                if (p.mode === "tour") {
+                    tourStart = now;
+                    tourShot = -1;
+                }
                 blur();
                 if (p.mode !== "drive") {
                     car.group.position.set(START.x, 0, START.z);
@@ -1721,9 +1730,10 @@ export function World(all: WorldProps) {
                 searchlight.lookAt(sx, 0, sz);
                 searchlight.rotateX(-PI / 2);
             }
-            trafficSystem.advance(advancing ? dt : 0);
+            const touring = p.mode === "tour";
+            trafficSystem.advance(advancing || touring ? dt : 0);
             for (const vehicle of traffic) {
-                vehicle.car.group.visible = inDrive;
+                vehicle.car.group.visible = inDrive || touring;
                 const position = vehicle.car.group.position;
                 if (advancing && !state.finished && state.collisionCooldown <= 0 && Math.hypot(state.x - position.x, state.z - position.z) < 3.5) {
                     state.speed *= 0.55;
@@ -1743,6 +1753,26 @@ export function World(all: WorldProps) {
                 sun.position.set(state.x - 45, 75, state.z - 20);
                 sun.target.position.set(state.x, 0, state.z);
             }
+            else if (touring) {
+                // Post-hijack fly-by: a slow dolly toward each Bay PD billboard.
+                const elapsed = now - tourStart;
+                const k = Math.floor(elapsed / TOUR_SHOT_MS) % TOUR_BOARDS.length;
+                const f = (elapsed % TOUR_SHOT_MS) / TOUR_SHOT_MS;
+                const b = TOUR_BOARDS[k];
+                const nx = Math.sin(b.rotation), nz = Math.cos(b.rotation);
+                const tx = Math.cos(b.rotation), tz = -Math.sin(b.rotation);
+                const dist = 34 - f * 12, side = (f - 0.5) * 10 * (k % 2 ? -1 : 1);
+                target.set(b.x + nx * dist + tx * side, 4.5 + f * 2.5, b.z + nz * dist + tz * side);
+                if (k !== tourShot) {
+                    tourShot = k;
+                    camera.position.copy(target);
+                }
+                look.set(b.x, 7.5, b.z);
+                camera.fov = 44;
+                camera.clearViewOffset();
+                sun.position.set(b.x - 45, 75, b.z - 20);
+                sun.target.position.set(b.x, 0, b.z);
+            }
             else {
                 if (!p.paused && !reduced)
                     orbit += dt * 0.065;
@@ -1761,7 +1791,7 @@ export function World(all: WorldProps) {
                         look.x = -1.5;
                 }
             }
-            camera.position.lerp(target, 1 - Math.exp(-dt * (inDrive ? 5 : 2)));
+            camera.position.lerp(target, 1 - Math.exp(-dt * (inDrive ? 5 : touring ? 3 : 2)));
             camera.lookAt(look);
             camera.updateProjectionMatrix();
             // Keep the sky beyond the fog horizon wherever the mission takes us.

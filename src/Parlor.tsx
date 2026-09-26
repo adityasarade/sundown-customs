@@ -73,6 +73,11 @@ export default function Parlor({
           >
             GET IN THE CHAIR <ArrowRight size={18} />
           </button>
+          {current && (
+            <button className="btn secondary full parlor-rework" onClick={() => onChair(current)}>
+              KEEP WORKING ON MY CURRENT TATTOO
+            </button>
+          )}
         </aside>
       </div>
     </section>
