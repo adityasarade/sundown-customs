@@ -6,6 +6,7 @@ const VERB: Record<TurnDir, string> = {
   right: "Turn right",
   straight: "Continue",
   arrive: "Destination",
+  uturn: "Turn around",
 };
 
 /** 180 m / 1.2 km, rounded the way sat-navs do. */
@@ -24,6 +25,13 @@ function Arrow({ dir }: { dir: TurnDir }) {
         <path d="M14 43 V6" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" fill="none" />
         <path d="M16 6 H38 L33 13.5 L38 21 H16 Z" fill="currentColor" />
         <path d="M21 6 H27 V13.5 H21 Z M27 13.5 H33 V21 H27 Z" fill="#141323" opacity=".85" />
+      </svg>
+    );
+  if (dir === "uturn")
+    return (
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M32 45 V20 Q32 8 21 8 Q10 8 10 20 V30" stroke="currentColor" strokeWidth="7" strokeLinecap="round" fill="none" />
+        <path d="M10 44 L-1 28 H21 Z" fill="currentColor" transform="translate(0 0)" />
       </svg>
     );
   if (dir === "straight")

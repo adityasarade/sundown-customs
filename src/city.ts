@@ -217,10 +217,10 @@ export type Mission = {
 };
 
 const CHECKPOINT_NAMES: Record<string, string> = {
-  "0:-175": "MARINA", "70:-175": "HARBOR ROW", "140:-175": "NORTH PIERS", "210:-175": "CAUSEWAY",
-  "0:-100": "OLD TOWN", "70:-100": "MARKET ST", "140:-100": "EAST MARKET", "210:-100": "RAIL YARD",
-  "0:-25": "PIER ROAD", "70:-25": "PLAZA", "140:-25": "PALM AVE", "210:-25": "SUNSET BLVD",
-  "0:50": "SUNDOWN CUSTOMS", "70:50": "BEACH ROAD", "140:50": "PALM HOTEL", "210:50": "PALM MOTEL",
+  "0:-400": "MARINA", "150:-400": "HARBOR ROW", "300:-400": "NORTH PIERS", "450:-400": "CAUSEWAY",
+  "0:-250": "OLD TOWN", "150:-250": "MARKET ST", "300:-250": "EAST MARKET", "450:-250": "RAIL YARD",
+  "0:-100": "PIER ROAD", "150:-100": "PLAZA", "300:-100": "PALM AVE", "450:-100": "SUNSET BLVD",
+  "0:50": "SUNDOWN CUSTOMS", "150:50": "BEACH ROAD", "300:50": "PALM HOTEL", "450:50": "PALM MOTEL",
 };
 export const placeName = (id: string) => CHECKPOINT_NAMES[id] ?? "SOLANA BAY";
 
