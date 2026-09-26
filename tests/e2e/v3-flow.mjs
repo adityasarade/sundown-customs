@@ -146,7 +146,7 @@ try {
   await step("THE PLAN: draw a route in Unlayer", async () => {
     await page.locator(".garage-jobs").getByText("THE PLAN", { exact: true }).click();
     await waitPhase("plan");
-    await page.getByText("Lock the plan", { exact: true }).first().waitFor({ timeout: 40000 });
+    await page.getByRole("button", { name: "Lock the plan" }).waitFor({ timeout: 40000 });
     await page.waitForTimeout(1500);
     await page.getByText("Route marker", { exact: true }).first().click();
     await page.waitForTimeout(800);
@@ -229,7 +229,7 @@ try {
     await shot("news");
     await page.getByRole("button", { name: /HIJACK THE SIGNAL/ }).click();
     await waitPhase("hijack", 20000);
-    await page.getByText("GO LIVE", { exact: true }).first().waitFor({ timeout: 40000 });
+    await page.getByRole("button", { name: "GO LIVE" }).waitFor({ timeout: 40000 });
     await page.waitForTimeout(1500);
     await page.getByText("Deface", { exact: true }).first().click();
     await page.waitForTimeout(600);
@@ -256,7 +256,7 @@ try {
     await shot("parlor");
     await page.getByRole("button", { name: /GET IN THE CHAIR/ }).click();
     await waitPhase("ink");
-    await page.getByText("Ink it", { exact: true }).first().waitFor({ timeout: 40000 });
+    await page.getByRole("button", { name: "Ink it" }).waitFor({ timeout: 40000 });
     await page.waitForTimeout(1500);
     await page.getByText("Needle", { exact: true }).first().click();
     await page.waitForTimeout(500);
@@ -277,7 +277,7 @@ try {
     await page.getByRole("button", { name: /CAPTURE THIS ANGLE/ }).click();
     await page.getByRole("button", { name: /OPEN IN SNAPPIX/ }).click();
     await waitPhase("editPhoto");
-    await page.getByText("Post to BAYFEED", { exact: true }).first().waitFor({ timeout: 40000 });
+    await page.getByRole("button", { name: "Post to BAYFEED" }).waitFor({ timeout: 40000 });
     await page.waitForTimeout(1200);
     await page.getByText("Borders", { exact: true }).first().click().catch(() => {});
     await page.waitForTimeout(1500);

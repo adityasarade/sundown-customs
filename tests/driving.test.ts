@@ -608,3 +608,13 @@ test("starsFor maps heat to 0-5 stars", () => {
   assert.equal(starsFor(100), 5);
   assert.equal(starsFor(999), 5);
 });
+
+test("reaching the last gate after the clock runs out is a loss, not a win", () => {
+  const mission = defaultMission();
+  const last = mission.checkpoints[mission.checkpoints.length - 1];
+  let state = createDriveState(mission);
+  state = { ...state, checkpoint: mission.checkpoints.length - 1, x: last.x, z: last.z + 30, heading: 0, speed: 29, elapsed: mission.seconds - 0.01 };
+  for (let i = 0; i < 60 && !state.finished; i++) state = stepDrive(state, { ...idle, gas: true }, DT);
+  assert.equal(state.finished, true);
+  assert.equal(state.won, false);
+});

@@ -8,8 +8,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5188",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:e2e": "node tests/e2e/flow.mjs",
-    "test:e2e:mobile": "E2E_MOBILE=1 node tests/e2e/flow.mjs"
+    "test:e2e": "node tests/e2e/v3-flow.mjs",
+    "test:e2e:mobile": "E2E_MOBILE=1 node tests/e2e/v3-flow.mjs",
+    "test:autopilot": "node tests/e2e/autopilot.mjs"
   },
   "dependencies": {
     "@unlayer/react-image-editor": "^1.0.2",

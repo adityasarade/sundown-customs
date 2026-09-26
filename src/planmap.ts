@@ -1071,6 +1071,22 @@ export function missionFromInk(ink: InkAnalysis): Mission {
   }
 
   const drawn = drawnEdgeKeys(ink.route);
+  // A short scribble that covers no road and goes nowhere is not a plan.
+  const garagePoint = NODES.find((n) => n.id === GARAGE_NODE)!;
+  const reach = ink.route.reduce(
+    (best, p) => Math.max(best, Math.hypot(p.x - garagePoint.x, p.z - garagePoint.z)),
+    0,
+  );
+  if (drawn.size === 0 && reach < 90 && ink.stash.length === 0) {
+    return {
+      ...defaultMission(),
+      notes: [
+        "That scribble doesn’t go anywhere. Draw along the roads from START to a gold drop.",
+        "Taking my route to the Marina for now.",
+      ],
+      fromDrawing: false,
+    };
+  }
   const weight = (edge: Edge) => edge.length * (drawn.has(edgeKey(edge.a, edge.b)) ? 0.25 : 4);
   const destinationPoints = ink.route.length ? ink.route : ink.stash;
   const destination = destinationForInk(destinationPoints, weight);

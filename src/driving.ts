@@ -284,6 +284,13 @@ export function stepDrive(state: DriveState, controls: DriveControls, dt: number
 
   stepChase(next, t);
   updateBooths(next);
+  // The clock runs out before a late crossing can count as a win.
+  if (next.elapsed >= next.limit) {
+    next.elapsed = next.limit;
+    next.finished = true;
+    next.won = false;
+    return next;
+  }
   updateCheckpoint(next);
   updateCameras(next);
   updateStashes(next);

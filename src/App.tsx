@@ -307,6 +307,7 @@ function App() {
     [hijackUrl, setHijackUrl] = useState(""),
     [hijackChanged, setHijackChanged] = useState(0),
     [runs, setRuns] = useState(0),
+    [runMission, setRunMission] = useState<Mission | null>(null),
     [jobsOpen, setJobsOpen] = useState(true);
   useEffect(() => {
     if (tattoo && !tattooCrop) cropTattoo(tattoo).then(setTattooCrop).catch(() => {});
@@ -629,10 +630,12 @@ function App() {
     radio.current?.sfx("lock");
     try {
       const m = await planFromImages(planBase, url);
+      if (phaseRef.current !== "plan") return;
       setMission(m);
       setPlanUrl(url);
       setPhase("planLocked");
     } catch {
+      if (phaseRef.current !== "plan") return;
       setMission(defaultMission());
       setNotice("Couldn’t read that map. Nico’s route is loaded instead.");
       setPhase("brief");
@@ -640,13 +643,14 @@ function App() {
   };
   const openHijack = async () => {
     if (!result) return;
+    const from = phaseRef.current;
     try {
       const frame = await composeBroadcast({
         alias: alias || "GHOST",
         headline:
           outcome === "busted"
             ? `LOCAL MENACE “${alias || "GHOST"}” IN CUSTODY`
-            : `MYSTERY COUPE REACHES ${mission.destination.name}`,
+            : `MYSTERY COUPE REACHES ${(runMission ?? mission).destination.name}`,
         cctv: wantedShot || result.snapshot,
         before: respray?.before || baseWrap,
         after: respray?.after || "",
@@ -654,6 +658,7 @@ function App() {
         emblem: emblemUrl,
         score: result.score,
       });
+      if (phaseRef.current !== from) return;
       setHijackFrame(frame);
       setPhase("hijack");
     } catch {
@@ -663,12 +668,14 @@ function App() {
   const goLive = async (url: string) => {
     radio.current?.sfx("hijack");
     const changed = await paintChange(hijackFrame, url);
+    if (phaseRef.current !== "hijack") return;
     setHijackChanged(changed);
     setHijackUrl(url);
     setPhase("hijackAir");
   };
   const startRun = () => {
     setRuns((n) => n + 1);
+    setRunMission(mission);
     setLoading({
       art: LOADING_ART[Math.floor(Math.random() * LOADING_ART.length)],
       tip: LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)],

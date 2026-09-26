@@ -1,5 +1,14 @@
 # Verification
 
+## v3 "Heist Night" checks (September 26, 2026)
+
+- `npm test`: 86 passing unit tests (city grid and projection, missions and GPS turns incl. U-turn, mission driving/pursuit/respray/stash/timeout rules, pixel map analysis, editor save gate).
+- `npm run test:e2e` (1440×900) and `npm run test:e2e:mobile` (390×844): 6/6 steps each, zero page errors, against the real hosted Unlayer editor. The script draws a route with the mouse on Nico's map in the plan context (garage → east → north → Causeway), locks it (read as CAUSEWAY LOT, 100% drawn, 2 cameras), drives the resulting mission using only keyboard input from live telemetry (3★ at the bridge camera, a Spray & Pray disguise kit cleared the stars, MISSION PASSED in ~44 s), opens the news, hijacks the live frame (draws on it, GO LIVE, billboards), inks a flash tattoo in the chair, and posts a Snappix to BAYFEED.
+- `ROUTE=marina|motel npm run test:autopilot`: both routes completed by keyboard autopilot; the camera-free Palm Motel route drew the late patrol (1★) as designed.
+- Audio (headless, radio on): all five stations run with no errors; measured master peaks −11 to −15 dBFS after gain staging; engine and siren layers respond to speed/cops.
+- Codex reviews (gpt-5.6-sol) of the v3 diff found six issues (async phase races, broadcast using the next mission, late-crossing win, speech not muted, stale station idents, aimless scribbles treated as plans); all fixed, two covered by new tests.
+- Production build passes; dev hooks (`__sd`) absent from `dist`.
+
 September 24, 2026. These are observed checks, not claims of exhaustive device coverage.
 
 ## GTA update checks (September 24, 16:00–16:30 UTC)

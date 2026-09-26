@@ -1,74 +1,82 @@
-# Sundown Customs
+# Sundown Customs v3
 
-**Paint it. Get made. Repaint your way out.** An original GTA-inspired crime-arcade built around Unlayer's React Image Editor, set in fictional Solana Bay.
+Draw the escape, paint the evidence, then put your takeover on the city’s screens.
+An original 3D crime-arcade for the web where seven Unlayer image-editor sessions become game state.
 
-[Play Sundown Customs](https://sundown-customs.vercel.app) · [Public source](https://github.com/adityasarade/sundown-customs)
+[Play Sundown Customs](https://sundown-customs.vercel.app) · [Source](https://github.com/adityasarade/sundown-customs)
 
 ![Original Sundown Customs cover illustration](public/art/cover.webp)
 
-## How Unlayer is used — five layers
+## Seven ways the image editor drives the game
 
-1. **Paint Booth (livery).** `src/Editor.tsx` mounts the real `@unlayer/react-image-editor`. `src/editor-contexts.ts` gives it a branded context via Unlayer `translations` — Draw → "Spray can", Text → "Tag", Shapes → "Stencils", Stickers → "Decals", Filter → "Tint", Crop → "Trim", Save → "Fit the wrap", Cancel → "Bail" — plus custom per-tool SVG `icon`s served from `public/icons`. Pre-built original decals from the **Decal Rack** (`src/DecalRack.tsx`, art in `src/decals.ts`) — crew badges, race numbers, fictional sponsors, flair — are composited onto the livery with `composeLivery()` before it opens in the editor.
-2. **Crew Emblem Creator (GTA Online–style).** `src/emblem.ts` seeds a 512×512 emblem that opens in its own dark Unlayer context: Stickers → "Symbols", Shapes → "Badge shapes", Text → "Crew name", Save → "Rep the crew". The saved emblem rides on the car roof texture, the driving HUD, the BAYFEED avatar, and the Bay 9 News broadcast crest.
-3. **Spray & Pray (mid-chase respray).** A dark context with a live per-pixel change meter polling `getImage()` every 1.4s. Disguise kits (`KITS`/`disguise()` in `src/decals.ts`) are loaded straight into the running editor via the instance `reset(imageUrl)` API. Every 8% of the livery you change drops one wanted star — measured by `src/paint-diff.ts`, a per-pixel colour-delta comparison on a 160×80 sample, with no image recognition involved.
-4. **Snappix darkroom.** A photo of the real 3D scene (captured from the live WebGL canvas) opens in a third context: the frame tool relabeled "Borders", Save → "Post to BAYFEED". Saving composes a parody social post (`src/BayFeed.tsx`) with animated likes and a scripted comment thread.
-5. **Everything saved is real.** The exact bitmaps you save become Three.js textures on the car (`src/World.tsx` loads the livery onto the hood/doors and the emblem onto the roof), the CCTV still captured from a fixed security-camera angle the moment you go wanted, the Bay PD roadside billboards (`src/poster.ts`'s "HAVE YOU SEEN THIS CAR?" — built from the paint the cameras saw, still hunting your old paint after a respray), and the exported 1600×900 Bay 9 News broadcast (`src/News.tsx`). Nothing on screen is a mock-up of your artwork; it's your artwork.
+Every session uses the native `@unlayer/react-image-editor`, but `editor-contexts.ts` gives each a context-specific theme, enabled tool set, custom SVG tool icons, and Unlayer translations.
 
-## The experience
+1. **Paint Booth: livery to 3D car.** Start with a livery and optional Decal Rack composition, then save pixels that Three.js applies to the car’s hood and side panels. Light theme; draw, text, shapes, stickers, filter, and crop are relabelled **Spray can**, **Tag**, **Stencils**, **Decals**, **Tint**, and **Trim**; save/cancel are **Fit the wrap**/**Bail**.
+2. **Crew Emblem: roof, HUD, BAYFEED, and news.** A procedural badge seed becomes an editable crew mark, then appears on the roof, in the driving HUD, as the BAYFEED avatar, and in Bay 9 news. Dark theme; stickers, shapes, text, draw, filter become **Symbols**, **Badge shapes**, **Crew name**, **Freehand**, **Colourway**; **Rep the crew**/**Back** save or cancel.
+3. **THE PLAN: drawn route to mission.** On Nico’s map, route ink is analysed pixel-by-pixel, snapped to the road grid, and turned into the destination, GPS ribbon, checkpoints, marked cash crates, and camera heat forecast. Dark theme; draw, shapes, text, stickers become **Route marker**, **Circle a crate**, **Notes**, **Pins**; **Lock the plan**/**Back**. Filters are off.
+4. **Spray & Pray: repaint while chased.** The mid-chase editor compares saved pixels with the paint police saw; each full 8% of change clears a wanted star. Its dark context has a live change meter and disguise kits loaded into the running editor with `reset()`; filter, draw, shapes, stickers, text become **Instant respray**, **Spray can**, **Cover-up**, **Fake decals**, **New tag**; **Respray & go**/**Drive off**.
+5. **Ink & Iron: tattoo to driver and report.** Pick original flash, refine it in the editor, then its cropped arm texture is used on the driver’s 3D arm, the busted mugshot, and the news witness sketch. Dark theme; draw, text, stickers, shapes, filter become **Needle**, **Script**, **Flash**, **Linework**, **Shading**; **Ink it**/**Chicken out**.
+6. **Signal Hijack: deface Bay 9 live.** The composed Bay 9 frame is editable, then airs with static, glitch slices, viewer count, and speech-synthesized anchor lines; the saved takeover also becomes every in-city billboard. Dark theme; draw, text, stickers, shapes, filter become **Deface**, **Your message**, **Pirate stickers**, **Censor bars**, **Signal noise**; **GO LIVE**/**Abort**.
+7. **Snappix: 3D shot to BAYFEED.** Capture the real WebGL scene, then crop, grade, border, caption, sticker, or doodle before posting a parody BAYFEED card. Dark theme; crop, filter, frame, text, stickers, draw become **Frame up**, **Snappix filters**, **Borders**, **Caption**, **Stickers**, **Doodle**; **Post to BAYFEED**/**Discard**. Shapes, resize, and corners are off.
 
-Nico sends you on **"The Last Delivery"**: four checkpoints around a fictional coastal loop, 90 seconds on the clock (`src/driving.ts`). At the north pier the harbour cameras get a clean shot of your paint and you go **WANTED** — up to five stars, three police cruisers that chase you along the exact line you drove (`copPose()` replays your own recorded trail), a helicopter searchlight once you're hot enough, and a BUSTED meter that fills if you stall with a cruiser on your bumper.
+## The city
 
-Your way out is Spray & Pray: drive into the booth on the east road and the run pauses while Unlayer reopens on your current livery. Repaint it, save, and the stars you shook off are computed from how much of the bitmap actually changed — the more you change, the more heat you lose. Drift through corners for bonus cash; the automatic-throttle option keeps you accelerating while you steer.
+Solana Bay is a 4×4 road grid with civilian traffic, five traffic cameras, two Spray & Pray booths, six possible crate sites, and three drop destinations. The planned route determines the gates, pink GPS ribbon, next-turn card, camera risk, and only the crates the player marked. Cameras can trigger three stars; otherwise a patrol can spot the run. Pursuing cruisers replay the line you actually drove, a helicopter and searchlight appear at three stars, and stalling near a cruiser fills the BUSTED meter.
 
-A GTA-style HUD tracks stars, cash, the clock, and a radar with a blip for the respray booth. Nico texts you through the run, and dismissible GTA-style help boxes (`src/Guide.tsx`) introduce the garage, the paint booth, the drive, being wanted, Spray & Pray, and photo mode the first time each appears. Loading screens between phases show original chase/respray/cover art and rotate short gameplay tips. Finish, get busted, or run out of time, and MISSION PASSED / BUSTED / MISSION FAILED all land with their own splash, payout breakdown (wanted stars dropped, stars still on you, drift cash, scrapes and rams), and personal-best tracking for this browser.
+## GTA radio
 
-From there: Bay 9 News airs the story (satirical anchor copy, the real CCTV still, a before/after paint comparison stamped with the measured change percentage, a scrolling ticker) and you can save the broadcast as a PNG. Then photo mode, a second Unlayer pass on your captured 3D shot in the Snappix darkroom, a BAYFEED post, and a downloadable run card.
+The in-browser Web Audio radio includes:
 
-Three synthesized radio stations (Coastline FM, Non-Stop Neon, Bay Talk) plus a siren and stinger cues are generated in the browser with the Web Audio API — off by default, on via the radio toggle or **R** while driving.
+- **COASTLINE FM 88.7** — Sunset synth-pop · 100 BPM
+- **NON-STOP NEON 101.3** — Outrun synthwave · 118 BPM
+- **BAY SOUL 94.7** — West-coast G-funk · 92 BPM
+- **FREESTYLE 105 105.9** — Miami freestyle · 124 BPM
+- **BAY TALK 94.1** — Solana Bay talk radio
 
-## Original art note
+Station idents and Bay Talk lines use `speechSynthesis`; the engine, pursuit sirens, radio, and UI cues are synthesized in-browser.
 
-Everything is original work: a fictional Solana Bay, an authored coupe, procedural low-poly architecture, generated illustrations for the cover/chase/respray/anchor art and Nico, hand-drawn canvas decals and crew badges, a synthesized radio bed and siren, and parody news/social copy — no real brands, franchises, or people.
+## Guided flow
+
+Nico’s BAYPHONE job list exposes the main and optional jobs. The objective pill updates with the next task; contextual help boxes explain the booth, planning, driving, GPS, respray, tattoo, hijack, and photo steps. Loading cards rotate practical tips, and the driving HUD includes the planned GPS card, radar, heat, cash, timer, and current objective.
 
 ## Controls
 
-| Action | Desktop | Touch |
+| Action | Keyboard | Touch |
 | --- | --- | --- |
-| Accelerate / brake | W / S or up / down | Gas pedal / brake-drift pedal |
-| Steer | A / D or left / right | Left / right buttons |
-| Drift | Space (or brake) while steering at speed | Brake-drift pedal + steer |
-| Boost | Shift while accelerating | Lightning button |
-| Change radio station | R | Station tap (in-run tuner) |
-| Pause | Escape or pause button | Pause button |
-| Inspect / frame car | Drag the scene | Drag horizontally |
+| Accelerate / brake | W / S or ↑ / ↓ | Accelerate and brake-drift pedals |
+| Steer | A / D or ← / → | Left / right buttons |
+| Drift | Space while steering at speed (brake also drifts) | Brake-drift pedal + steer |
+| Boost | Shift | Boost button |
+| Radio | R | In-run station button |
+| Pause | Esc or pause button | Pause button |
+| Inspect / frame car | Drag | Drag |
 
-An optional automatic throttle keeps the car accelerating while the player steers; brake still interrupts it. Leaving the tab pauses the run. Motion is reduced when the browser preference requests it. Sound starts only after the radio toggle is pressed.
-
-The mobile editor reflows the real native tool settings beneath the canvas and labels its icon-only Save/Cancel actions (`src/editor-accessibility.ts`). No replacement drawing tool is used — it's the native Unlayer editor throughout.
+Automatic throttle is optional; it keeps accelerating until you brake. Switching tabs pauses a drive.
 
 ## Testing
 
-- **Unit tests** (`npm test`, `node --experimental-strip-types --test tests/*.test.ts`): 15 tests covering the pure driving logic in `tests/driving.test.ts` (the coastal loop, timing, drift and collision accounting, heading wrap, wanted/heat thresholds, respray star math, the BUSTED bust-meter, cop pursuit) and the Unlayer save gate in `tests/editor-gate.test.ts` (rejecting unedited saves, accepting real edits, and never blocking a save when the runtime's change signals are ambiguous).
-- **End-to-end** (`npm run test:e2e`, or `npm run test:e2e:mobile` for the mobile viewport): `tests/e2e/flow.mjs` drives the whole game once in a real Chromium browser against the real (non-mocked) Unlayer runtime — home → garage → decal rack → paint booth (Tint → Invert → Fit the wrap) → delivery briefing → drive → going wanted → Spray & Pray → finishing the run → the news broadcast → photo mode → Snappix → BAYFEED — and saves screenshots to `test-results/e2e`.
+- `npm test` currently runs **86 unit tests** across city geometry, GPS turns, driving and pursuit rules, editor-save handling, and pixel-based map analysis.
+- `npm run test:e2e` (and `npm run test:e2e:mobile` at 390×844) runs the full v3 playthrough in Chromium. `node tests/e2e/autopilot.mjs` (with `ROUTE=marina|causeway|motel`) drives a full mission using only keyboard input read from live telemetry.
+- `node tests/e2e/v3-flow.mjs` is the full v3 playthrough: it draws a route in the real editor, then drives that route with keyboard input.
 
 ## Run locally
-
-Use Node 22.13+ (Node 25 was used during development).
 
 ```sh
 npm ci
 npm run dev
 npm test
 npm run test:e2e
-npm run build
+node tests/e2e/v3-flow.mjs
 ```
 
-Open `http://127.0.0.1:5188`. Vercel serves the static `dist` directory. There is no server, secret, runtime AI call, login, or API key to configure.
+Open `http://127.0.0.1:5188`.
 
 ## Storage and dependencies
 
-The latest livery, callsign, crew emblem, underglow, and personal best are stored in this browser's local storage. Captured CCTV stills, photographs, and run state live in memory only. Storage failure does not prevent the current session from working. **New build** clears the fitted livery. No analytics or application backend is present.
+The browser stores the callsign, fitted livery, crew emblem, tattoo, underglow, and personal best in local storage. Run captures, CCTV stills, photos, plans, broadcasts, and session state are in memory. There is no application backend, login, secret, runtime AI call, or analytics.
 
-The hosted Unlayer runtime and its assets require a network connection. Google Fonts are requested with local font fallbacks. WebGL is required for the 3D world; an explicit error is shown when unavailable. The app requests no physical camera, microphone, or location permissions — photo mode and the CCTV still both capture the game's own WebGL canvas.
+Dependencies include React, Three.js, `@unlayer/react-image-editor`, Lucide, Vite, TypeScript, and Playwright. The hosted editor assets and requested Google Fonts need network access; WebGL is required for the 3D world. The app does not request physical camera, microphone, or location permissions.
 
-See [verification](docs/verification.md), [asset provenance](docs/provenance.md), [competition strategy](docs/competition-strategy.md), and the [submission kit](docs/submission-kit.md).
+## Original art
+
+Illustrations are generated original artwork; the city, vehicle, decals, tattoo flash, audio, and fictional outlets are original to this project. No real brands are used. Sundown Customs is fan-made and is not affiliated with Rockstar Games.

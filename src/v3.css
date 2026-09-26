@@ -70,3 +70,7 @@
   .parlor-panel > .btn { position: sticky; bottom: 0; }
   .parlor-panel :is(.flash-rack, [class*="flash"]) { overflow-y: auto; min-height: 0; }
 }
+@media (max-width: 700px) {
+  .phase-drive .topbar .brand, .phase-respray .topbar .brand { visibility: hidden; }
+  .topbar .objective-pill, .topbar [class*="objective"] { display: none !important; }
+}

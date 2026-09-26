@@ -126,6 +126,7 @@ export class Radio {
 
   public stop(): void {
     this.running = false;
+    this.cancelSpeech();
     if (this.timer !== undefined && typeof window !== "undefined") {
       window.clearInterval(this.timer);
     }
@@ -159,7 +160,13 @@ export class Radio {
     this.applyTalkStatic(0.12);
     this.schedule();
     if (typeof window !== "undefined") {
-      window.setTimeout(() => this.announce(STATION_IDENTS[next]), 180);
+      // Only the station you land on introduces itself.
+      if (this.identTimer !== undefined) window.clearTimeout(this.identTimer);
+      this.cancelSpeech();
+      this.identTimer = window.setTimeout(() => {
+        this.identTimer = undefined;
+        if (this.stationIndex === next) this.announce(STATION_IDENTS[next]);
+      }, 450);
     }
   }
 
@@ -294,6 +301,14 @@ export class Radio {
         this.noiseHit(now, 0.018, 0.018, 3000, 10000, 0, false);
         break;
     }
+  }
+
+  private identTimer?: number;
+
+  private cancelSpeech(): void {
+    this.speechToken += 1;
+    if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
+    if (this.context && this.musicBus) this.duckMusic(false);
   }
 
   public announce(text: string): void {

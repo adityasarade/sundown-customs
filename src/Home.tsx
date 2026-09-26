@@ -172,11 +172,11 @@ export default function Home({ onStart, onSound, sound }: HomeProps) {
               <span>NOW PLAYING — COASTLINE FM 88.7</span><b>◆</b>
               <span>NON-STOP NEON 101.3</span><b>◆</b>
               <span>BAY TALK 94.1</span><b>◆</b>
-              <span>VICEWAVE 96.6</span><b>◆</b>
+              <span>BAY SOUL 94.7</span><b>◆</b><span>FREESTYLE 105 105.9</span><b>◆</b>
               <span>NOW PLAYING — COASTLINE FM 88.7</span><b>◆</b>
               <span>NON-STOP NEON 101.3</span><b>◆</b>
               <span>BAY TALK 94.1</span><b>◆</b>
-              <span>VICEWAVE 96.6</span><b>◆</b>
+              <span>BAY SOUL 94.7</span><b>◆</b><span>FREESTYLE 105 105.9</span><b>◆</b>
             </div>
           </div>
         </div>

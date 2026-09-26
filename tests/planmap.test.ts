@@ -366,3 +366,10 @@ test("yellow circles with no route line still mark crates without blaming the dr
   assert.ok(mission.notes.some((note) => note.includes("No route line")));
   assert.ok(mission.notes.length >= 2 && mission.notes.length <= 4);
 });
+
+test("a short scribble next to the garage is not treated as a plan", () => {
+  const scribble = Array.from({ length: 40 }, (_, i) => ({ x: 30 + (i % 8) * 3, z: 70 + Math.floor(i / 8) * 3 }));
+  const m = missionFromInk({ route: scribble, stash: [], routePixels: 400, stashPixels: 0 });
+  assert.equal(m.fromDrawing, false);
+  assert.equal(m.destination.id, "marina");
+});
