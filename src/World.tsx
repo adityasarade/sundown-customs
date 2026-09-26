@@ -1398,7 +1398,12 @@ export function World(all: WorldProps) {
         observer.observe(el);
         resize();
         const keys = (down: boolean) => (e: KeyboardEvent) => {
-            if (down && (props.current.mode !== "drive" || props.current.paused))
+            // Track held keys through short pauses (e.g. the loading card) so a
+            // key pressed early still counts, but never steal typing from the
+            // image editor or text fields.
+            const target = e.target as HTMLElement | null;
+            const typing = !!target?.closest?.(".editor-screen, input, textarea, [contenteditable='true']");
+            if (down && (props.current.mode !== "drive" || typing || document.querySelector(".editor-screen")))
                 return;
             const key = e.key.toLowerCase(), c = props.current.controls.current;
             const map: Record<string, keyof DriveControls> = {
