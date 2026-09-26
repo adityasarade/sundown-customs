@@ -113,7 +113,7 @@ export class Radio {
     this.nextStep = 0;
     this.nextTime = ctx.currentTime + 0.04;
     this.master.gain.cancelScheduledValues(ctx.currentTime);
-    this.master.gain.setTargetAtTime(0.48, ctx.currentTime, 0.08);
+    this.master.gain.setTargetAtTime(3.6, ctx.currentTime, 0.08);
     this.applyMusicLevel(0.08);
     this.applyEngine(0.08);
     this.applyTalkStatic(0.08);
@@ -383,7 +383,7 @@ export class Radio {
     this.musicPan = musicPan;
 
     const effects = ctx.createGain();
-    effects.gain.value = 0.82;
+    effects.gain.value = 0.45;
     effects.connect(master);
     this.effectsBus = effects;
 

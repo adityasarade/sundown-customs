@@ -63,3 +63,10 @@
 .news-ink img { display: block; width: 100%; }
 .news-ink figcaption { font: 700 10px ui-monospace, Menlo, monospace; letter-spacing: .06em; color: #fff; padding: 5px 4px 2px; }
 @media (max-width: 700px) { .news-ink { display: none; } }
+/* Polish after playthrough review */
+.brief-card h2 em { background: none !important; -webkit-background-clip: initial; background-clip: initial; color: #e8663c !important; filter: none; }
+@media (min-width: 901px) {
+  .parlor-panel { position: sticky; top: 16px; max-height: calc(100svh - 32px); display: flex; flex-direction: column; }
+  .parlor-panel > .btn { position: sticky; bottom: 0; }
+  .parlor-panel :is(.flash-rack, [class*="flash"]) { overflow-y: auto; min-height: 0; }
+}

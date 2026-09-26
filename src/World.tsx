@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { applyRespray, livePayout, copPose, createDriveState, runScore, starsFor, stepDrive, type DriveControls, type DriveEvent, } from "./driving";
 import { makeCar, type CarModel } from "./car";
-import { AVENUES, STREETS, ROAD_HALF_WIDTH, EDGES, NODES, START, node, landmarks, defaultMission, type Mission, type Point, type Landmark } from "./city";
+import { AVENUES, STREETS, BLOCK, ROAD_HALF_WIDTH, EDGES, NODES, START, node, landmarks, defaultMission, type Mission, type Point, type Landmark } from "./city";
 import { nextTurn, type Turn } from "./gps";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -28,6 +28,7 @@ export type Telemetry = {
     z?: number;
     heading?: number;
     turn?: Turn;
+    collected?: string[];
     stashes?: number;
     stashTotal?: number;
     limit?: number;
@@ -283,6 +284,41 @@ function palm(batch: Batch, x: number, z: number, size: number, angle: number, t
         batch.add(geo, frond, transform);
     }
 }
+// All world extents and roadside furniture share the same grid-derived anchors.
+const CITY = {
+    west: AVENUES[0], east: AVENUES[AVENUES.length - 1],
+    north: STREETS[0], south: STREETS[STREETS.length - 1],
+};
+const BOARD_IDS = ["cam-market", "cam-bridge", "cam-pier", "cam-north", "cam-mid"];
+function roadside(l: Landmark, offset: number) {
+    const avenue = AVENUES.some((x) => x === l.x);
+    return { x: l.x + (avenue ? offset : 0), z: l.z - (avenue ? 0 : offset), avenue };
+}
+function boothPose(l: Landmark) {
+    return roadside(l, ROAD_HALF_WIDTH + 7);
+}
+function boardPose(l: Landmark) {
+    const p = roadside(l, ROAD_HALF_WIDTH + 12);
+    return { ...p, rotation: p.avenue ? -PI / 3 : -PI / 7 };
+}
+type Footprint = Point & { w: number; d: number };
+const reservedLots: Footprint[] = [
+    ...landmarks("respray").map((l) => {
+        const p = boothPose(l);
+        return { ...p, w: p.avenue ? 15 : 24, d: p.avenue ? 24 : 15 };
+    }),
+    ...landmarks("camera").filter((l) => BOARD_IDS.includes(l.id)).map((l) => {
+        const p = boardPose(l);
+        return { ...p, w: Math.abs(Math.cos(p.rotation)) * 18.6 + 5,
+            d: Math.abs(Math.sin(p.rotation)) * 18.6 + 5 };
+    }),
+];
+function overlapsFurniture(x: number, z: number, w: number, d: number) {
+    return reservedLots.some((p) => Math.abs(x - p.x) < (w + p.w) / 2 && Math.abs(z - p.z) < (d + p.d) / 2);
+}
+function clearGarageOrbit(x: number, z: number, w = 0, d = 0) {
+    return Math.hypot(Math.max(0, Math.abs(x - START.x) - w / 2), Math.max(0, Math.abs(z - START.z) - d / 2)) >= 26;
+}
 function buildCity(scene: THREE.Scene) {
     const city = new THREE.Group();
     city.name = "Solana Bay / static material batches";
@@ -292,55 +328,71 @@ function buildCity(scene: THREE.Scene) {
     const curb = material("#d7c3ad"), concrete = material("#afa598"), grass = material("#718978");
     const yellow = material("#eacb83"), white = material("#f4dec2"), roof = material("#9a8b98");
     const metal = material("#465856"), wood = material("#998a70");
-    batch.box(360, 0.2, 460, 150, -0.2, -60, sand);
+    const h = ROAD_HALF_WIDTH, sidewalk = 6;
+    const width = CITY.east - CITY.west, depth = CITY.south - CITY.north;
+    const cz = (CITY.north + CITY.south) / 2;
+    const shore = CITY.west - h - 12, margin = BLOCK;
+    const landEast = CITY.east + margin;
+    batch.box(landEast - shore, 0.2, depth + margin * 2, (shore + landEast) / 2, -0.2, cz, sand);
     const water = material("#3d4f86", 0.15, 0.5);
-    batch.box(1100, 0.12, 1250, -575, -0.28, -70, water);
-    const h = ROAD_HALF_WIDTH;
-    // Streets own the intersections; avenue pieces stop at them (no coplanar overlap).
-    for (const z of STREETS)
-        batch.box(210 + 2 * h, 0.12, 2 * h, 105, 0.02, z, asphalt);
-    for (const x of AVENUES)
-        for (let r = 0; r < 3; r++) {
-            const length = STREETS[r + 1] - STREETS[r] - 2 * h;
-            batch.box(2 * h, 0.12, length, x, 0.02, (STREETS[r] + STREETS[r + 1]) / 2, asphalt);
-        }
+    const seaWidth = width + margin * 4, seaDepth = depth + margin * 6;
+    batch.box(seaWidth, 0.12, seaDepth, shore - seaWidth / 2, -0.28, cz, water);
+    // Each node owns its intersection; edge slabs stop precisely at its edges.
+    for (const n of NODES)
+        batch.box(2 * h, 0.12, 2 * h, n.x, 0.02, n.z, asphalt);
     for (const edge of EDGES) {
         const a = node(edge.a), b = node(edge.b), alongX = a.z === b.z;
-        for (let d = h + 5; d < edge.length - h - 2; d += 9) {
-            batch.box(alongX ? 4.4 : 0.16, 0.01, alongX ? 0.16 : 4.4, a.x + (alongX ? d : 0), 0.09, a.z + (alongX ? 0 : d), yellow);
+        const length = edge.length - 2 * h, x = (a.x + b.x) / 2, z = (a.z + b.z) / 2;
+        batch.box(alongX ? length : 2 * h, 0.12, alongX ? 2 * h : length, x, 0.02, z, asphalt);
+        for (const side of [-1, 1]) {
+            const sx = x + (alongX ? 0 : side * (h + sidewalk / 2));
+            const sz = z + (alongX ? side * (h + sidewalk / 2) : 0);
+            batch.box(alongX ? length - 2 * sidewalk : sidewalk, 0.28, alongX ? sidewalk : length - 2 * sidewalk, sx, 0.04, sz, concrete);
+            batch.box(alongX ? length : 0.4, 0.2, alongX ? 0.4 : length,
+                x + (alongX ? 0 : side * (h + 0.2)), 0.2, z + (alongX ? side * (h + 0.2) : 0), curb);
         }
+        for (let d = h + 5; d < edge.length - h - 2; d += 9)
+            batch.box(alongX ? 4.4 : 0.16, 0.01, alongX ? 0.16 : 4.4,
+                a.x + (b.x - a.x) * d / edge.length, 0.09, a.z + (b.z - a.z) * d / edge.length, yellow);
     }
     for (const n of NODES) {
+        for (const sx of [-1, 1])
+            for (const sz of [-1, 1])
+                batch.box(sidewalk, 0.28, sidewalk, n.x + sx * (h + sidewalk / 2), 0.04, n.z + sz * (h + sidewalk / 2), concrete);
         for (const side of [-1, 1]) {
-            for (let stripe = -9; stripe <= 9; stripe += 3) {
-                batch.box(1.6, 0.01, 3.1, n.x + stripe, 0.09, n.z + side * 10, white);
-                batch.box(3.1, 0.01, 1.6, n.x + side * 10, 0.09, n.z + stripe, white);
+            for (let stripe = -h + 4; stripe <= h - 4; stripe += 3) {
+                batch.box(1.6, 0.01, 3.1, n.x + stripe, 0.09, n.z + side * (h - 3), white);
+                batch.box(3.1, 0.01, 1.6, n.x + side * (h - 3), 0.09, n.z + stripe, white);
             }
-            batch.box(9.5, 0.01, 0.4, n.x + side * 6, 0.09, n.z + side * 13, white);
-            batch.box(0.4, 0.01, 9.5, n.x + side * 13, 0.09, n.z - side * 6, white);
+            if (n.z + side * h > CITY.north && n.z + side * h < CITY.south)
+                batch.box(h - 3.5, 0.01, 0.4, n.x + side * h / 2, 0.09, n.z + side * h, white);
+            if (n.x + side * h > CITY.west && n.x + side * h < CITY.east)
+                batch.box(0.4, 0.01, h - 3.5, n.x + side * h, 0.09, n.z - side * h / 2, white);
         }
     }
-    // A continuous waterfront, with individual piers and mooring rails merged together.
-    batch.box(8, 0.45, 290, -20, 0, -55, concrete);
-    for (let z = -200; z <= 90; z += 8) {
-        batch.box(0.16, 1.1, 0.16, -23.5, 0.8, z, metal);
-        if (z < 88)
-            batch.box(0.1, 0.1, 8, -23.5, 1.25, z + 4, metal);
+    // The promenade and marina run the entire western edge, including the outer ring.
+    const promenadeNorth = CITY.north - BLOCK / 2, promenadeSouth = CITY.south + BLOCK / 2;
+    batch.box(8, 0.45, promenadeSouth - promenadeNorth, shore + 4, 0, cz, concrete);
+    for (let z = promenadeNorth; z <= promenadeSouth; z += 8) {
+        batch.box(0.16, 1.1, 0.16, shore + 0.5, 0.8, z, metal);
+        const railLength = Math.min(8, promenadeSouth - z);
+        if (railLength > 0)
+            batch.box(0.1, 0.1, railLength, shore + 0.5, 1.25, z + railLength / 2, metal);
     }
-    for (let i = 0; i < 10; i++) {
-        const z = 72 - i * 28;
-        batch.box(25, 0.3, 2.7, -36.5, 0.02, z, wood);
-        for (const x of [-27, -47])
-            batch.box(0.35, 1.8, 0.35, x, 0.25, z, wood);
+    for (let z = promenadeNorth + 12, i = 0; z < promenadeSouth - 12; z += BLOCK / 5, i++) {
+        batch.box(25, 0.3, 2.7, shore - 12.5, 0.02, z, wood);
+        for (const offset of [2, 23])
+            batch.box(0.35, 1.8, 0.35, shore - offset, 0.25, z, wood);
         const hull = new THREE.CapsuleGeometry(1.4, 5, 3, 6);
         hull.rotateX(PI / 2);
-        hull.translate(-40, -0.1, z - 5);
+        hull.translate(shore - 16, -0.1, z - 5);
         batch.add(hull, i % 2 ? white : yellow);
-        batch.box(1.8, 0.8, 2.9, -40, 0.55, z - 5, white);
-        batch.box(0.06, 7, 0.06, -40, 3.8, z - 5, metal);
+        batch.box(1.8, 0.8, 2.9, shore - 16, 0.55, z - 5, white);
+        batch.box(0.06, 7, 0.06, shore - 16, 3.8, z - 5, metal);
     }
-    for (let i = 0; i < 48; i++)
-        batch.box(12 + random() * 15, 0.01, 0.16, -50 - random() * 250, -0.208, -240 + random() * 390, metal);
+    for (let i = 0; i < 96; i++)
+        batch.box(12 + random() * 15, 0.01, 0.16, shore - 30 - random() * width, -0.208,
+            promenadeNorth + random() * (promenadeSouth - promenadeNorth), metal);
     const { facade } = buildTextures();
     const walls = new THREE.MeshStandardMaterial({ map: facade, emissiveMap: facade, emissive: "#ffffff", emissiveIntensity: 1.65, vertexColors: true, roughness: 0.68, metalness: 0.12 });
     // Suppress neutral stucco in the shared emissive atlas; only colored windows glow.
@@ -357,8 +409,28 @@ function buildCity(scene: THREE.Scene) {
     const neon = [pink, cyan];
     const palette = ["#eaa3b8", "#8fd3c2", "#f3b690", "#b7a1dc", "#f0dcb4", "#9fc4e8", "#e9b3d8"];
     const names = ["PALM MOTEL", "NO REFUNDS", "BAY RECORDS", "NICE TRY", "LATE CHECKOUT", "VICE & RICE", "CASH 4 GOLD-ISH", "SUNSET LIQUOR", "HOT WINGS HOT TAKES", "OCEAN VUE", "LUCKY 7 PAWN", "TAN LINES"];
+    // All sixteen storefront signs share one atlas/material and one static draw.
+    const signCanvas = document.createElement("canvas");
+    signCanvas.width = 512;
+    signCanvas.height = names.length * 128;
+    const signTexture = new THREE.CanvasTexture(signCanvas);
+    signTexture.colorSpace = THREE.SRGBColorSpace;
+    const signColors = ["#ff4fb0", "#52e8ff", "#ffcf4a"];
+    paintWithDisplayFont(signTexture, () => {
+        const ctx = signCanvas.getContext("2d")!;
+        ctx.fillStyle = "#1b1030";
+        ctx.fillRect(0, 0, signCanvas.width, signCanvas.height);
+        ctx.font = 'italic 900 55px "Barlow Condensed", sans-serif';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        names.forEach((name, i) => {
+            ctx.fillStyle = signColors[i % signColors.length];
+            ctx.fillText(name, 256, i * 128 + 64, 460);
+        });
+    });
+    const signMat = new THREE.MeshBasicMaterial({ map: signTexture, side: THREE.DoubleSide, color: new THREE.Color().setScalar(1.9) });
     let buildingId = 0, signId = 0;
-    function building(x: number, z: number, w: number, d: number, height: number, color: string, named = false) {
+    function building(x: number, z: number, w: number, d: number, height: number, color: string, facing?: number) {
         const geo = new THREE.BoxGeometry(w, height, d);
         const uv = geo.getAttribute("uv"), pos = geo.getAttribute("position"), norm = geo.getAttribute("normal");
         // Eight atlas cells per repeat: every window occupies 3.2 by 2.9 world meters.
@@ -387,115 +459,153 @@ function buildCity(scene: THREE.Scene) {
             for (const side of [-1, 1])
                 batch.box(w + 0.5, 0.1, 0.1, x, height + 0.45, z + side * (d / 2 + 0.22), neon[buildingId % 2]);
         }
-        if (named && signId < names.length) {
-            sign(city, names[signId], w * 0.95, 1.4, x, height + 1.55, z + d / 2 + 0.3, 0, "#1b1030", ["#ff4fb0", "#52e8ff", "#ffcf4a"][signId % 3]);
+        if (facing !== undefined && signId < 16) {
+            const alongZ = Math.abs(Math.cos(facing)) > 0.5;
+            const panel = new THREE.PlaneGeometry(Math.min(24, (alongZ ? w : d) * 0.95), 1.8);
+            const uv = panel.getAttribute("uv"), row = signId % names.length;
+            for (let i = 0; i < uv.count; i++)
+                uv.setY(i, (names.length - row - 1 + uv.getY(i)) / names.length);
+            panel.rotateY(facing);
+            panel.translate(x + Math.sin(facing) * (w / 2 + 0.35), Math.min(height - 1.5, 8),
+                z + Math.cos(facing) * (d / 2 + 0.35));
+            batch.add(panel, signMat);
             signId++;
         }
         buildingId++;
     }
-    const blocks: {
-        x: number;
-        z: number;
-        inner: boolean;
-    }[] = [];
-    for (let row = 0; row < 3; row++)
-        for (let col = 0; col < 3; col++)
-            blocks.push({ x: 35 + col * 70, z: -137.5 + row * 75, inner: true });
-    for (const x of [252, 292])
-        for (const z of [-230, -137.5, -62.5, 12.5, 115])
-            blocks.push({ x, z, inner: false });
-    for (const x of [35, 105, 175]) {
-        blocks.push({ x, z: -228, inner: false });
-        blocks.push({ x, z: x === 35 ? 128 : 108, inner: false });
-    }
-    for (const block of blocks) {
-        const { x, z, inner } = block;
-        if (inner) {
-            batch.box(44, 0.28, 44, x, 0.04, z, concrete);
-            batch.box(35, 0.06, 35, x, 0.21, z, grass);
-            for (const side of [-1, 1]) {
-                batch.box(44, 0.18, 0.5, x, 0.18, z + side * 22, curb);
-                batch.box(0.5, 0.18, 44, x + side * 22, 0.18, z, curb);
-            }
-        }
-        const count = inner ? 4 : 2 + Math.floor(random() * 3);
-        for (let i = 0; i < count; i++) {
-            const bx = x + (i % 2 ? 9 : -9), bz = z + (i < 2 ? -10 : 10);
-            const w = 10 + random() * 6, d = 10 + random() * 6;
-            // Reserve footprints around camera furniture and the larger respray structures.
-            const boothOverlap = landmarks("respray").some((l) => {
-                const avenue = AVENUES.some((a) => a === l.x);
-                const cx = l.x + (avenue ? 20 : 0), cz = l.z - (avenue ? 0 : 20);
-                return Math.abs(bx - cx) < w / 2 + (avenue ? 7 : 10) && Math.abs(bz - cz) < d / 2 + (avenue ? 11 : 7);
-            });
-            const billboardOverlap = landmarks("camera").filter((l) => ["cam-market", "cam-bridge", "cam-pier"].includes(l.id)).some((l) => {
-                const avenue = AVENUES.some((a) => a === l.x);
-                const cx = l.x + (avenue ? 23 : 0), cz = l.z - (avenue ? 0 : 23);
-                return Math.abs(bx - cx) < w / 2 + (avenue ? 5.5 : 9) && Math.abs(bz - cz) < d / 2 + (avenue ? 9 : 5.5);
-            });
-            // The garage camera orbits the display pad (22 m radius on phones).
-            const orbitOverlap = Math.hypot(Math.max(0, Math.abs(bx - START.x) - w / 2), Math.max(0, Math.abs(bz - START.z) - d / 2)) < 26;
-            if (boothOverlap || billboardOverlap || orbitOverlap)
-                continue;
-            const downtown = bx > 125 && bz < -95;
-            const height = bx < 60 ? 6 + random() * 9 : downtown ? 24 + random() * 18 : 9 + random() * 20;
-            building(bx, bz, w, d, height, downtown && i % 3 === 0 ? "#526880" : palette[Math.floor(random() * palette.length)], i === 0);
-        }
-    }
-    // The original shop and north-facing canopy remain clear of the south road.
-    building(30, 81, 24, 16, 5.5, "#7b9b8d");
-    sign(city, "SUNDOWN CUSTOMS", 20, 1.7, 30, 5.3, 72.85, PI, "#143b34", "#f0d9a2");
-    batch.box(25, 0.3, 7, 30, 4.4, 69, yellow);
-    for (const x of [19, 41])
-        batch.box(0.18, 4.1, 0.18, x, 2.1, 67, curb);
     const trunk = material("#907552");
     const frond = new THREE.MeshStandardMaterial({ color: "#447862", side: THREE.DoubleSide, roughness: 1 });
-    for (const x of [-17, 17])
-        for (let z = -191; z <= 80; z += 14) {
-            const size = 0.85 + random() * 0.45, angle = random() * PI * 2;
-            // Keep the garage orbit clear: the mobile camera circles the pad at a
-            // 22 m radius, 7.5 m up, right through these canopies.
-            if (Math.hypot(x - START.x, z - START.z) < 30)
+    function plant(x: number, z: number, size = 1) {
+        if (clearGarageOrbit(x, z, 8, 8) && !overlapsFurniture(x, z, 8, 8))
+            palm(batch, x, z, size, random() * PI * 2, trunk, frond);
+    }
+    const parkedPaint = material("#ffffff", 0.4, 0.25);
+    parkedPaint.vertexColors = true;
+    const parkedGlass = material("#273344", 0.2, 0.35), rubber = material("#20212a");
+    for (let row = 0; row < STREETS.length - 1; row++) {
+        for (let col = 0; col < AVENUES.length - 1; col++) {
+            const left = AVENUES[col] + h + sidewalk, right = AVENUES[col + 1] - h - sidewalk;
+            const top = STREETS[row] + h + sidewalk, bottom = STREETS[row + 1] - h - sidewalk;
+            const x = (left + right) / 2, z = (top + bottom) / 2;
+            const w = right - left, d = bottom - top;
+            batch.box(w, 0.28, d, x, 0.04, z, concrete);
+            if (row === 1 && col === 0) {
+                // A full city block of lawns, paths, benches and a stepped fountain.
+                for (const sx of [-1, 1])
+                    for (const sz of [-1, 1])
+                        batch.box(w / 2 - 9, 0.06, d / 2 - 9, x + sx * w / 4, 0.21, z + sz * d / 4, grass);
+                for (const [radius, height, y, mat] of [[11, 0.6, 0.5, curb], [9.8, 0.12, 0.85, water], [3, 1.3, 1.1, curb], [2.7, 0.12, 1.8, water]] as const) {
+                    const bowl = new THREE.CylinderGeometry(radius, radius, height, 32);
+                    bowl.translate(x, y, z);
+                    batch.add(bowl, mat);
+                }
+                batch.box(0.18, 3, 0.18, x, 3.2, z, cyan);
+                for (const sx of [-1, 1])
+                    for (const sz of [-1, 1]) {
+                        plant(x + sx * w * 0.32, z + sz * d * 0.32, 1.3);
+                        batch.box(5, 0.35, 1.4, x + sx * 18, 0.7, z + sz * 16, wood);
+                        batch.box(5, 1, 0.18, x + sx * 18, 1.1, z + sz * 16 + sz * 0.6, wood);
+                    }
                 continue;
-            palm(batch, x, z, size, angle, trunk, frond);
-        }
-    for (const z of [34, 66])
-        for (let x = 32; x <= 224; x += 16) {
-            if (z === 66 && x < 55)
+            }
+            if (row === 0 && col === AVENUES.length - 2) {
+                batch.box(w - 6, 0.04, d - 6, x, 0.2, z, asphalt);
+                // Four rows, with driving aisles between them. Cars are simple merged boxes.
+                for (let r = 0; r < 4; r++)
+                    for (let c = 0; c < 12; c++) {
+                        const px = left + 10 + c * (w - 20) / 12, pz = top + 14 + r * (d - 28) / 3;
+                        if (overlapsFurniture(px, pz, 7, 12)) continue;
+                        batch.box(0.12, 0.01, 8, px - 2.8, 0.23, pz, white);
+                        if (random() < 0.32) continue;
+                        const body = new THREE.BoxGeometry(2.8, 1, 5.6);
+                        const colors = new Float32Array(body.getAttribute("position").count * 3);
+                        const color = new THREE.Color(palette[(r + c) % 4]);
+                        for (let v = 0; v < colors.length; v += 3) color.toArray(colors, v);
+                        body.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+                        body.translate(px, 0.95, pz);
+                        batch.add(body, parkedPaint);
+                        batch.box(2.35, 0.85, 2.8, px, 1.85, pz, parkedGlass);
+                        for (const side of [-1, 1])
+                            for (const end of [-1, 1])
+                                batch.box(0.3, 0.8, 1.1, px + side * 1.4, 0.65, pz + end * 1.7, rubber);
+                    }
+                for (const sx of [-1, 1]) plant(x + sx * (w / 2 - 3), z, 1.2);
                 continue;
-            palm(batch, x, z, 0.9 + random() * 0.4, random() * PI * 2, trunk, frond);
+            }
+            const divisions = (row + col) % 2 === 0 ? 3 : 2;
+            const lotW = w / divisions, lotD = d / divisions;
+            let blockSigns = 0;
+            for (let r = 0; r < divisions; r++)
+                for (let c = 0; c < divisions; c++) {
+                    const bw = Math.min(45, lotW - 5) * (0.78 + random() * 0.22);
+                    const bd = Math.min(45, lotD - 5) * (0.78 + random() * 0.22);
+                    // Edge lots sit against the setback; remaining space becomes alleys.
+                    const bx = c === 0 ? left + bw / 2 : c === divisions - 1 ? right - bw / 2 : x;
+                    const bz = r === 0 ? top + bd / 2 : r === divisions - 1 ? bottom - bd / 2 : z;
+                    if (overlapsFurniture(bx, bz, bw + 1, bd + 1) || !clearGarageOrbit(bx, bz, bw, bd)) continue;
+                    const downtown = col === 1 && r === divisions - 1 && c === divisions - 1;
+                    const height = downtown ? 48 + random() * 16 : 8 + random() * 37;
+                    const facing = r === 0 ? PI : r === divisions - 1 ? 0 : c === 0 ? -PI / 2 : c === divisions - 1 ? PI / 2 : undefined;
+                    building(bx, bz, bw, bd, height, downtown ? "#526880" : palette[Math.floor(random() * palette.length)],
+                        facing !== undefined && blockSigns < 2 ? facing : undefined);
+                    if (facing !== undefined) blockSigns++;
+                }
         }
-    for (const block of blocks.slice(0, 14))
-        for (const side of [-1, 1]) {
-            const px = block.x + side * 19, pz = block.z + 18, size = 0.8 + random() * 0.35, angle = random() * PI * 2;
-            if (Math.hypot(px - START.x, pz - START.z) >= 30)
-                palm(batch, px, pz, size, angle, trunk, frond);
+    }
+    // Low-rise perimeter on the north, east and south; west remains open to the bay.
+    const ringDepth = BLOCK * 0.4, ringOffset = h + sidewalk + ringDepth / 2;
+    const outerLots: (Footprint & { facing: number })[] = [];
+    for (let col = 0; col < AVENUES.length - 1; col++)
+        for (let lot = 0; lot < 3; lot++) {
+            const x = AVENUES[col] + (lot + 0.5) * (AVENUES[col + 1] - AVENUES[col]) / 3;
+            for (const side of [-1, 1])
+                outerLots.push({ x, z: (side < 0 ? CITY.north : CITY.south) + side * ringOffset, w: 30 + random() * 12, d: ringDepth * 0.65, facing: side < 0 ? 0 : PI });
         }
+    for (let row = 0; row < STREETS.length - 1; row++)
+        for (let lot = 0; lot < 3; lot++)
+            outerLots.push({ x: CITY.east + ringOffset, z: STREETS[row] + (lot + 0.5) * (STREETS[row + 1] - STREETS[row]) / 3, w: ringDepth * 0.65, d: 30 + random() * 12, facing: -PI / 2 });
+    const garage = landmarks("garage")[0];
+    const shopX = garage.x + BLOCK / 5, shopZ = garage.z + h + 18;
+    for (const lot of outerLots) {
+        if (Math.abs(lot.x - shopX) < lot.w / 2 + 17 && Math.abs(lot.z - shopZ) < lot.d / 2 + 15) continue;
+        if (overlapsFurniture(lot.x, lot.z, lot.w, lot.d) || !clearGarageOrbit(lot.x, lot.z, lot.w, lot.d)) continue;
+        building(lot.x, lot.z, lot.w, lot.d, 8 + random() * 13, palette[Math.floor(random() * palette.length)], lot.facing);
+        const px = lot.x + Math.sin(lot.facing) * (lot.w / 2 + 4);
+        const pz = lot.z + Math.cos(lot.facing) * (lot.d / 2 + 4);
+        plant(px, pz, 1.1);
+    }
+    building(shopX, shopZ, 24, 16, 5.5, "#7b9b8d");
+    sign(city, "SUNDOWN CUSTOMS", 20, 1.7, shopX, 5.3, shopZ - 8.15, PI, "#143b34", "#f0d9a2");
+    batch.box(25, 0.3, 7, shopX, 4.4, shopZ - 12, yellow);
+    for (const side of [-1, 1])
+        batch.box(0.18, 4.1, 0.18, shopX + side * 11, 2.1, shopZ - 14, curb);
     const lamp = new THREE.MeshStandardMaterial({ color: "#ffeab4", emissive: "#ffbe6b", emissiveIntensity: 2 });
-    for (const x of AVENUES)
-        for (let z = -157; z < 50; z += 35) {
-            if (STREETS.some((street) => Math.abs(street - z) < ROAD_HALF_WIDTH + 1.5))
-                continue;
-            const px = x + 15.5;
-            batch.box(0.14, 6, 0.14, px, 3, z, metal);
-            batch.box(2.4, 0.14, 0.14, px - 1.2, 6, z, metal);
-            batch.box(1, 0.08, 0.45, px - 2.1, 5.9, z, lamp);
+    for (const edge of EDGES) {
+        const a = node(edge.a), b = node(edge.b), alongX = a.z === b.z;
+        const length = edge.length - 2 * (h + 7), count = Math.max(1, Math.round(length / 40));
+        for (let i = 0; i <= count; i++) {
+            const t = (h + 7 + i * length / count) / edge.length;
+            const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+            const px = x + (alongX ? 0 : h + 2.5), pz = z - (alongX ? h + 2.5 : 0);
+            if (!overlapsFurniture(px, pz, 4, 4) && clearGarageOrbit(px, pz)) {
+                batch.box(0.14, 6, 0.14, px, 3, pz, metal);
+                batch.box(alongX ? 0.14 : 2.4, 0.14, alongX ? 2.4 : 0.14, px - (alongX ? 0 : 1.2), 6, pz + (alongX ? 1.2 : 0), metal);
+                batch.box(alongX ? 0.45 : 1, 0.08, alongX ? 1 : 0.45, px - (alongX ? 0 : 2.1), 5.9, pz + (alongX ? 2.1 : 0), lamp);
+            }
         }
-    for (const z of STREETS)
-        for (let x = 24; x < 220; x += 35) {
-            if (AVENUES.some((avenue) => Math.abs(avenue - x) < ROAD_HALF_WIDTH + 1.5))
-                continue;
-            batch.box(0.14, 6, 0.14, x, 3, z - 15.5, metal);
-            batch.box(0.14, 0.14, 2.4, x, 6, z - 14.3, metal);
-            batch.box(0.45, 0.08, 1, x, 5.9, z - 13.4, lamp);
+        for (let offset = h + 14; offset < edge.length - h - 8; offset += BLOCK / 5) {
+            const t = offset / edge.length;
+            for (const side of [-1, 1])
+                plant(a.x + (b.x - a.x) * t + (alongX ? 0 : side * (h + 4)),
+                    a.z + (b.z - a.z) * t + (alongX ? side * (h + 4) : 0), 0.85 + random() * 0.3);
         }
-    // Familiar trackside chevrons still mark the outer turns of the expanded grid.
+    }
     const cornerMat = new THREE.MeshBasicMaterial({ map: textTexture("› › ›", "#16443c", "#ffbf72"), side: THREE.DoubleSide });
     cornerMat.color.setScalar(1.9);
     for (const corner of [
-        { x: 0, z: -190, rotation: 0 },
-        { x: 225, z: -175, rotation: -PI / 2 },
-        { x: 210, z: 65, rotation: PI },
+        { x: CITY.west, z: CITY.north - h - 3, rotation: 0 },
+        { x: CITY.east + h + 3, z: CITY.north, rotation: -PI / 2 },
+        { x: CITY.east, z: CITY.south + h + 3, rotation: PI },
     ]) {
         const panelGroup = new THREE.Group();
         panelGroup.position.set(corner.x, 0, corner.z);
@@ -509,12 +619,17 @@ function buildCity(scene: THREE.Scene) {
     batch.flush(city);
     // Sign planes also join their own material buckets; no static geometry is left unbatched.
     mergeStatic(city);
+    // Flat ground receives shadows but need not be redrawn as a shadow caster.
+    const groundMaterials: THREE.Material[] = [sand, asphalt, concrete, grass, water];
+    for (const obj of city.children)
+        if (obj instanceof THREE.Mesh && !Array.isArray(obj.material) && groundMaterials.includes(obj.material))
+            obj.castShadow = false;
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.12, 64), material("#bdb199"));
-    pad.position.set(0, 0.13, 40);
+    pad.position.set(START.x, 0.13, START.z);
     scene.add(pad);
     const line = new THREE.Mesh(new THREE.TorusGeometry(6.7, 0.035, 4, 80), material("#f7d5a0"));
     line.rotation.x = PI / 2;
-    line.position.set(0, 0.205, 40);
+    line.position.set(START.x, 0.205, START.z);
     scene.add(line);
     return { city, pad, line };
 }
@@ -611,8 +726,8 @@ function groundRing(parent: THREE.Object3D, radius: number, mat: THREE.Material)
 }
 const CONE_OPACITY = 0.06;
 function cameraPole(l: Landmark) {
-    const avenue = AVENUES.some((x) => x === l.x);
-    return new THREE.Vector3(l.x + (avenue ? 15.5 : 0), 7, l.z - (avenue ? 0 : 15.5));
+    const p = roadside(l, ROAD_HALF_WIDTH + 2.5);
+    return new THREE.Vector3(p.x, 7, p.z);
 }
 function buildLandmarks(scene: THREE.Scene) {
     const staticGroup = new THREE.Group();
@@ -661,9 +776,9 @@ function buildLandmarks(scene: THREE.Scene) {
     }[] = [];
     const boothMat = material("#2b2436"), opening = material("#0c0a12"), trim = new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff4fb0").multiplyScalar(1.8) });
     for (const l of landmarks("respray")) {
-        const avenue = AVENUES.some((x) => x === l.x);
+        const { x, z, avenue } = boothPose(l);
         const booth = new THREE.Group();
-        booth.position.set(l.x + (avenue ? 20 : 0), 0, l.z - (avenue ? 0 : 20));
+        booth.position.set(x, 0, z);
         // Default facade is -x; rotating +90 degrees makes it face +z.
         booth.rotation.y = avenue ? 0 : PI / 2;
         staticGroup.add(booth);
@@ -689,12 +804,12 @@ function buildLandmarks(scene: THREE.Scene) {
     const boardMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(1.25), map: defaultBoard });
     const boards = new THREE.Group();
     scene.add(boards);
-    for (const id of ["cam-market", "cam-bridge", "cam-pier"]) {
+    for (const id of BOARD_IDS) {
         const l = landmarks("camera").find((c) => c.id === id)!;
-        const avenue = AVENUES.some((x) => x === l.x), group = new THREE.Group();
-        group.position.set(l.x + (avenue ? 23 : 0), 0, l.z - (avenue ? 0 : 23));
+        const p = boardPose(l), group = new THREE.Group();
+        group.position.set(p.x, 0, p.z);
         // Face the road, angled toward traffic arriving from the garage side (south / west).
-        group.rotation.y = avenue ? -PI / 3 : -PI / 7;
+        group.rotation.y = p.rotation;
         boards.add(group);
         const panel = new THREE.Mesh(new THREE.PlaneGeometry(18, 9), boardMat);
         panel.position.y = 7.5;
@@ -951,21 +1066,39 @@ function createFleet(scene: THREE.Scene, models: CarModel[]) {
         geometry: THREE.BufferGeometry;
         material: THREE.Material;
         entries: Entry[];
+        tinted: boolean;
     }>();
+    // Match local geometry, not traversal order: all identical tires/rims can
+    // share an instance batch even when they belong to different wheel groups.
+    const geometryIds = new Map<string, number>();
+    const geometryId = (geo: THREE.BufferGeometry) => {
+        const signature = Object.keys(geo.attributes).sort().map((name) => {
+            const attr = geo.getAttribute(name);
+            return `${name}:${attr.itemSize}:${Array.from(attr.array, (v) => Math.round(v * 1e6)).join(",")}`;
+        }).join("|") + `/${geo.index ? Array.from(geo.index.array).join(",") : ""}`;
+        let id = geometryIds.get(signature);
+        if (id === undefined) {
+            id = geometryIds.size;
+            geometryIds.set(signature, id);
+        }
+        return id;
+    };
     for (const model of models) {
         compactCar(model);
-        let index = 0;
         model.group.traverse((obj) => {
             if (!(obj instanceof THREE.Mesh) || Array.isArray(obj.material) || !obj.visible)
                 return;
             const mat = obj.material;
             const standard = mat instanceof THREE.MeshStandardMaterial ? mat : null;
-            const key = `${index++}/${mat.type}/${standard?.color.getHex()}/${standard?.emissive.getHex()}/${standard?.roughness}/${standard?.metalness}/${mat.transparent}/${mat.side}`;
-            const bucket: {
-                geometry: THREE.BufferGeometry;
-                material: THREE.Material;
-                entries: Entry[];
-            } = buckets.get(key) ?? { geometry: obj.geometry, material: mat, entries: [] };
+            const tinted = mat === model.body;
+            const key = `${geometryId(obj.geometry)}/${mat.type}/${tinted ? "paint" : standard?.color.getHex()}/${standard?.emissive.getHex()}/${standard?.roughness}/${standard?.metalness}/${mat.transparent}/${mat.side}`;
+            let bucket = buckets.get(key);
+            if (!bucket) {
+                const instanceMaterial = tinted ? model.body.clone() : mat;
+                if (instanceMaterial instanceof THREE.MeshStandardMaterial && tinted)
+                    instanceMaterial.color.set("#ffffff");
+                bucket = { geometry: obj.geometry, material: instanceMaterial, entries: [], tinted };
+            }
             bucket.entries.push({ mesh: obj, owner: model, index: bucket.entries.length });
             buckets.set(key, bucket);
         });
@@ -973,6 +1106,8 @@ function createFleet(scene: THREE.Scene, models: CarModel[]) {
     const batches = [...buckets.values()].map((bucket) => {
         const mesh = new THREE.InstancedMesh(bucket.geometry, bucket.material, bucket.entries.length);
         mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        if (bucket.tinted)
+            for (const entry of bucket.entries) mesh.setColorAt(entry.index, entry.owner.body.color);
         mesh.castShadow = !bucket.material.transparent;
         mesh.receiveShadow = true;
         mesh.frustumCulled = false;
@@ -1028,7 +1163,7 @@ function createTraffic() {
                     length = Math.hypot(b.x - a.x, b.z - a.z);
                 }
                 const h = Math.atan2(b.x - a.x, -(b.z - a.z)), t = vehicle.t / length;
-                vehicle.car.group.position.set(a.x + (b.x - a.x) * t + Math.cos(h) * 5, 0.025, a.z + (b.z - a.z) * t + Math.sin(h) * 5);
+                vehicle.car.group.position.set(a.x + (b.x - a.x) * t + Math.cos(h) * ROAD_HALF_WIDTH * 0.4, 0.025, a.z + (b.z - a.z) * t + Math.sin(h) * ROAD_HALF_WIDTH * 0.4);
                 vehicle.car.group.rotation.y = -h;
                 for (const wheel of vehicle.car.wheels)
                     wheel.rotation.x -= vehicle.speed * dt / 0.6;
@@ -1065,9 +1200,9 @@ export function World(all: WorldProps) {
         renderer.toneMappingExposure = 1.12;
         el.appendChild(renderer.domElement);
         const scene = new THREE.Scene();
-        scene.fog = new THREE.Fog("#d9798a", 110, 420);
-        const camera = new THREE.PerspectiveCamera(47, 1, 0.1, 1000);
-        camera.position.set(11, 6, 51);
+        scene.fog = new THREE.Fog("#d9798a", BLOCK * 0.8, BLOCK * 3.2);
+        const camera = new THREE.PerspectiveCamera(47, 1, 0.1, BLOCK * 6);
+        camera.position.set(START.x + 11, 6, START.z + 11);
         scene.add(new THREE.HemisphereLight("#ffc9a8", "#4b3f78", 2.2));
         const sun = new THREE.DirectionalLight("#ffb482", 3.0);
         sun.position.set(-45, 75, -20);
@@ -1081,7 +1216,7 @@ export function World(all: WorldProps) {
         sun.shadow.bias = -0.0001;
         scene.add(sun);
         scene.add(sun.target);
-        const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 32, 16), new THREE.ShaderMaterial({
+        const sky = new THREE.Mesh(new THREE.SphereGeometry(BLOCK * 5, 32, 16), new THREE.ShaderMaterial({
             side: THREE.BackSide,
             depthWrite: false,
             uniforms: {
@@ -1094,17 +1229,18 @@ export function World(all: WorldProps) {
         }));
         scene.add(sky);
         const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(18, 32, 24), new THREE.MeshBasicMaterial({ color: "#ffd08a", fog: false }));
-        sunDisc.position.set(-320, 22, 60);
+        sunDisc.position.set(START.x - BLOCK * 2.1, 22, START.z + BLOCK * 0.4);
         scene.add(sunDisc);
         const starRandom = seeded(450);
         const starPositions: number[] = [];
         for (let i = 0; i < 120; i++) {
             const az = starRandom() * PI * 2, elevation = 0.3 + starRandom() * 1.15;
-            starPositions.push(Math.cos(az) * Math.cos(elevation) * 640, Math.sin(elevation) * 640, Math.sin(az) * Math.cos(elevation) * 640);
+            starPositions.push(Math.cos(az) * Math.cos(elevation) * BLOCK * 4.3, Math.sin(elevation) * BLOCK * 4.3, Math.sin(az) * Math.cos(elevation) * BLOCK * 4.3);
         }
         const starGeo = new THREE.BufferGeometry();
         starGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
-        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: "#e6c7ff", size: 1.1, transparent: true, opacity: 0.45, depthWrite: false, fog: false })));
+        const starsSky = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: "#e6c7ff", size: 1.1, transparent: true, opacity: 0.45, depthWrite: false, fog: false }));
+        scene.add(starsSky);
         const { pad, line } = buildCity(scene);
         const { markers, blink, boards, boardMat, defaultBoard, cones } = buildLandmarks(scene);
         let lastMission = props.current.mission ?? FALLBACK_MISSION;
@@ -1134,7 +1270,7 @@ export function World(all: WorldProps) {
         let lastTattoo = "", tattooTex: THREE.Texture | null = null;
         let boardVersion = 0, emblemVersion = 0, tattooVersion = 0;
         scene.add(car.group);
-        car.group.position.set(0, 0, 40);
+        car.group.position.set(START.x, 0, START.z);
         const trafficSystem = createTraffic();
         const traffic = trafficSystem.traffic;
         trafficSystem.advance(0);
@@ -1148,11 +1284,14 @@ export function World(all: WorldProps) {
         // Police helicopter: a searchlight that follows the car at three stars.
         const heli = new THREE.Group();
         const heliBody = material("#141a22", 0.5, 0.3);
+        const heliRigid = new THREE.Group();
+        heli.add(heliRigid);
         const cabin = new THREE.Mesh(new THREE.CapsuleGeometry(1.1, 2.4, 4, 10), heliBody);
         cabin.rotation.x = PI / 2;
-        heli.add(cabin);
-        cube(heli, 0.35, 0.35, 4.6, 0, 0.2, 3.4, heliBody);
-        cube(heli, 0.1, 1.2, 0.8, 0, 0.7, 5.6, heliBody);
+        heliRigid.add(cabin);
+        cube(heliRigid, 0.35, 0.35, 4.6, 0, 0.2, 3.4, heliBody);
+        cube(heliRigid, 0.1, 1.2, 0.8, 0, 0.7, 5.6, heliBody);
+        mergeStatic(heliRigid);
         const rotor = cube(heli, 9, 0.06, 0.32, 0, 1.35, 0, material("#0a0d12", 0.6));
         const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), new THREE.MeshBasicMaterial({ color: "#ff3030" }));
         beacon.position.set(0, -0.9, -0.6);
@@ -1201,6 +1340,12 @@ export function World(all: WorldProps) {
         let dustCursor = 0;
         let state = createDriveState(lastMission), lastRun = props.current.runId, lastMode = props.current.mode, lastTime = performance.now(), raf = 0, dead = false, finishedReported = false, lastUi = 0, textureVersion = 0, lastWrap = "", lastPaint = "", lastGlow: string | null | undefined = undefined, currentTexture: THREE.Texture | null = null, orbit = 0, dragAngle = 0, dragX: number | null = null;
         const target = new THREE.Vector3(), look = new THREE.Vector3();
+        const resetChaseCamera = () => {
+            const start = state.mission.start;
+            camera.position.set(start.x - Math.sin(start.heading) * 9.5, 6.6, start.z + Math.cos(start.heading) * 9.5);
+            camera.lookAt(start.x + Math.sin(start.heading) * 8, 1, start.z - Math.cos(start.heading) * 8);
+        };
+        if (props.current.mode === "drive") resetChaseCamera();
         const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
         const dragStart = (e: PointerEvent) => {
             if (props.current.mode === "drive")
@@ -1227,7 +1372,13 @@ export function World(all: WorldProps) {
         const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.48, 0.45, 1.05);
         composer.addPass(bloom);
         composer.addPass(new OutputPass());
-        const draw = () => bloomOn ? composer.render() : renderer.render(scene, camera);
+        // Report a complete frame, including shadow and bloom passes.
+        renderer.info.autoReset = false;
+        const draw = () => {
+            renderer.info.reset();
+            if (bloomOn) composer.render();
+            else renderer.render(scene, camera);
+        };
         const resize = () => {
             const w = el.clientWidth, h = el.clientHeight;
             if (!w || !h)
@@ -1333,7 +1484,7 @@ export function World(all: WorldProps) {
                 dustLife.fill(0);
                 missionVisuals.ribbonTime = -1;
                 missionVisuals.lastCheckpoint = -1;
-                camera.position.set(START.x, 6, START.z + 12);
+                resetChaseCamera();
             }
             // The mission prop is only read when a run (re)starts; everything the
             // player sees and the HUD reads follows the mission the run is actually
@@ -1453,7 +1604,7 @@ export function World(all: WorldProps) {
                 lastMode = p.mode;
                 blur();
                 if (p.mode !== "drive") {
-                    car.group.position.set(0, 0, 40);
+                    car.group.position.set(START.x, 0, START.z);
                     car.group.rotation.set(0, 0, 0);
                     orbit = 0;
                 }
@@ -1597,11 +1748,11 @@ export function World(all: WorldProps) {
                     orbit += dt * 0.065;
                 const a = 2.06 + Math.sin(orbit) * 0.15 + dragAngle;
                 const distance = el.clientWidth < 700 ? 22 : 12.7;
-                target.set(Math.sin(a) * distance, el.clientWidth < 700 ? 7.5 : 5.2, 40 + Math.cos(a) * distance);
-                look.set(0, 1.0, 40);
+                target.set(START.x + Math.sin(a) * distance, el.clientWidth < 700 ? 7.5 : 5.2, START.z + Math.cos(a) * distance);
+                look.set(START.x, 1.0, START.z);
                 camera.fov = 47;
-                sun.position.set(-45, 75, 20);
-                sun.target.position.set(0, 0, 40);
+                sun.position.set(START.x - 45, 75, START.z - 20);
+                sun.target.position.set(START.x, 0, START.z);
                 if (el.clientWidth < 700)
                     camera.setViewOffset(el.clientWidth, el.clientHeight, 0, el.clientHeight * 0.13, el.clientWidth, el.clientHeight);
                 else {
@@ -1613,6 +1764,10 @@ export function World(all: WorldProps) {
             camera.position.lerp(target, 1 - Math.exp(-dt * (inDrive ? 5 : 2)));
             camera.lookAt(look);
             camera.updateProjectionMatrix();
+            // Keep the sky beyond the fog horizon wherever the mission takes us.
+            sky.position.copy(camera.position);
+            starsSky.position.copy(camera.position);
+            sunDisc.position.set(camera.position.x - BLOCK * 2.1, 22, camera.position.z + BLOCK * 0.4);
             missionVisuals.destinationSign.quaternion.copy(camera.quaternion);
             draw();
             if (inDrive && now - lastUi > 95) {
@@ -1638,7 +1793,8 @@ export function World(all: WorldProps) {
                     x: state.x,
                     z: state.z,
                     heading: state.heading,
-                    turn: nextTurn(mission, state.checkpoint, state.x, state.z),
+                    turn: nextTurn(mission, state.checkpoint, state.x, state.z, state.heading),
+                    collected: [...state.collected],
                     stashes: state.collected.length,
                     stashTotal: mission.stashes.length,
                     limit: state.limit,

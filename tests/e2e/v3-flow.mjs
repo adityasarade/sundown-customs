@@ -146,9 +146,9 @@ try {
   await step("THE PLAN: draw a route in Unlayer", async () => {
     await page.locator(".garage-jobs").getByText("THE PLAN", { exact: true }).click();
     await waitPhase("plan");
-    await page.getByText("Lock the plan", { exact: true }).waitFor({ timeout: 40000 });
+    await page.getByText("Lock the plan", { exact: true }).first().waitFor({ timeout: 40000 });
     await page.waitForTimeout(1500);
-    await page.getByText("Route marker", { exact: true }).click();
+    await page.getByText("Route marker", { exact: true }).first().click();
     await page.waitForTimeout(800);
     await shot("plan-editor");
     const rect = await editorImageRect();
@@ -229,9 +229,9 @@ try {
     await shot("news");
     await page.getByRole("button", { name: /HIJACK THE SIGNAL/ }).click();
     await waitPhase("hijack", 20000);
-    await page.getByText("GO LIVE", { exact: true }).waitFor({ timeout: 40000 });
+    await page.getByText("GO LIVE", { exact: true }).first().waitFor({ timeout: 40000 });
     await page.waitForTimeout(1500);
-    await page.getByText("Deface", { exact: true }).click();
+    await page.getByText("Deface", { exact: true }).first().click();
     await page.waitForTimeout(600);
     const rect = await editorImageRect();
     const scribble = Array.from({ length: 14 }, (_, i) => ({ px: 200 + i * 90, py: 300 + (i % 2) * 260 }));
@@ -256,9 +256,9 @@ try {
     await shot("parlor");
     await page.getByRole("button", { name: /GET IN THE CHAIR/ }).click();
     await waitPhase("ink");
-    await page.getByText("Ink it", { exact: true }).waitFor({ timeout: 40000 });
+    await page.getByText("Ink it", { exact: true }).first().waitFor({ timeout: 40000 });
     await page.waitForTimeout(1500);
-    await page.getByText("Needle", { exact: true }).click();
+    await page.getByText("Needle", { exact: true }).first().click();
     await page.waitForTimeout(500);
     const rect = await editorImageRect();
     await drawPolyline(rect, 1200, 800, [{ px: 420, py: 340 }, { px: 520, py: 420 }, { px: 640, py: 330 }]);
@@ -277,9 +277,9 @@ try {
     await page.getByRole("button", { name: /CAPTURE THIS ANGLE/ }).click();
     await page.getByRole("button", { name: /OPEN IN SNAPPIX/ }).click();
     await waitPhase("editPhoto");
-    await page.getByText("Post to BAYFEED", { exact: true }).waitFor({ timeout: 40000 });
+    await page.getByText("Post to BAYFEED", { exact: true }).first().waitFor({ timeout: 40000 });
     await page.waitForTimeout(1200);
-    await page.getByText("Borders", { exact: true }).click().catch(() => {});
+    await page.getByText("Borders", { exact: true }).first().click().catch(() => {});
     await page.waitForTimeout(1500);
     await page.getByRole("button", { name: "Post to BAYFEED" }).click();
     await page.locator(".bayfeed").waitFor({ timeout: 15000 });
